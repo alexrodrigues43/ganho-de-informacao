@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with authorization and subscription status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "client"] },
+        "status": { "type": "string", "enum": ["active", "pending", "blocked", "expired"] },
+        "plan": { "type": "string" },
+        "expiresAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "notes": { "type": "string" },
+        "auditsCount": { "type": "number" }
+      },
+      "required": ["uid", "email", "role", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "entity": "User"
+    }
+  }
+}

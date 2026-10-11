@@ -1,0 +1,8 @@
+{
+  "name": "Analisador de Ganho de Informação",
+  "description": "Simulador de Ganho Marginal de Informação baseado em decomposição de fatos atômicos (S-P-O) baseado na patente US 11,354,342 B2 do Google",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
