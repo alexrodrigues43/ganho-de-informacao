@@ -766,6 +766,7 @@ ${analysisResult.fatos_analisados
               {/* 3 Metric Summary Cards */}
               <MetricsCards
                 theme={theme}
+                metrics={analysisResult}
                 scoreGeral={analysisResult.score_geral}
                 classificacaoGeral={analysisResult.classificacao_geral}
                 fatosNovosPct={analysisResult.fatos_novos_pct}

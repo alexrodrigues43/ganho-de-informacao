@@ -3,12 +3,32 @@ import { ConsolidatedMetrics, ThemeMode } from '../types';
 import { Award, Sparkles, TrendingUp, CopyCheck } from 'lucide-react';
 
 interface MetricsCardsProps {
-  metrics: ConsolidatedMetrics;
+  metrics?: ConsolidatedMetrics;
+  scoreGeral?: number;
+  classificacaoGeral?: 'ALTO GANHO' | 'MÉDIO GANHO' | 'BAIXO GANHO';
+  fatosNovosPct?: number;
+  fatosNovosCount?: number;
+  fatosIncrementaisPct?: number;
+  fatosIncrementaisCount?: number;
+  fatosRedundantesPct?: number;
+  fatosRedundantesCount?: number;
   theme: ThemeMode;
 }
 
-export const MetricsCards: React.FC<MetricsCardsProps> = ({ metrics, theme }) => {
+export const MetricsCards: React.FC<MetricsCardsProps> = (props) => {
+  const { theme } = props;
   const isDark = theme === 'dark';
+
+  const metrics: ConsolidatedMetrics = props.metrics || {
+    score_geral: props.scoreGeral ?? 0,
+    classificacao_geral: props.classificacaoGeral ?? 'MÉDIO GANHO',
+    fatos_novos_count: props.fatosNovosCount ?? 0,
+    fatos_novos_pct: props.fatosNovosPct ?? 0,
+    fatos_incrementais_count: props.fatosIncrementaisCount ?? 0,
+    fatos_incrementais_pct: props.fatosIncrementaisPct ?? 0,
+    fatos_redundantes_count: props.fatosRedundantesCount ?? 0,
+    fatos_redundantes_pct: props.fatosRedundantesPct ?? 0,
+  };
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5" id="metrics-grid">
