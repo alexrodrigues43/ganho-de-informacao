@@ -34,6 +34,11 @@ service cloud.firestore {
       
       // Only admin can delete user records
       allow delete: if isAdmin();
+
+      // Baselines e ontologias salvas pelo próprio usuário
+      match /baselines/{baselineId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
   }
 }

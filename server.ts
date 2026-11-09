@@ -42,6 +42,7 @@ const engineLimiter = rateLimit({
 
 app.use('/api/', generalLimiter);
 app.use('/api/engine', engineLimiter);
+app.use('/api/writer', engineLimiter);
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -73,6 +74,7 @@ Sua função é decompor documentos em proposições atômicas no formato de tri
 1. Um fato atômico deve ser uma unidade mínima, verificável e indivisível de conhecimento.
 2. Cada fato deve ser formalizado como um tripleto estruturado: [Sujeito] [Predicado] [Objeto].
 3. Não infira fatos implícitos ou opiniões; extraia estritamente o que estiver afirmado na fonte.
+4. ATENÇÃO DE TERMINOLOGIA: Em todo o ecossistema, NUNCA utilize o vocábulo "palavra-chave" ou variações. Utilize exclusivamente "termo", "termos", "termos de pesquisa" ou "entidades".
 
 ### Critérios estritos de classificação e pontuação
 Ao comparar um fato extraído do novo texto contra a lista de fatos conhecidos:
@@ -138,7 +140,7 @@ Retorne um JSON estrito no seguinte formato:
         const parsed = JSON.parse(rawText);
         return res.json(parsed);
       } else {
-        // Deterministic heuristic extraction if API key is not yet set
+        // Heurística local determinística se IA não estiver configurada
         const lines = docText.split(/[.\n]+/).map(s => s.trim()).filter(s => s.length > 20);
         const fatos = lines.map((line, idx) => {
           const parts = line.split(/\s+(?:define|utilizam|consistem em|calcula|emerge de|estruturam|mapeiam|possuem|armazena|representam|são|é|permite|estabelece|atribui)\s+/i);
@@ -214,7 +216,6 @@ Retorne estritamente um JSON válido conforme o schema.`;
         parsed.acao = 'analisar_ganho';
         return res.json(parsed);
       } else {
-        // High quality fallback analysis if GEMINI_API_KEY is not configured
         return res.json({
           error_note: 'Gemini API Key não configurada. Ative sua chave em Settings > Secrets para análises com IA em tempo real.',
         });
@@ -227,6 +228,199 @@ Retorne estritamente um JSON válido conforme o schema.`;
     return res.status(500).json({
       error: error?.message || 'Erro ao processar requisição no motor de análise.',
     });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// Endpoints Especializados para o Estúdio do Redator (Writer Studio)
+// -----------------------------------------------------------------------------
+
+// 1. Identificador de Lacunas de Informação (Information Gaps)
+app.post('/api/writer/gaps', async (req, res) => {
+  try {
+    const { candidateDoc, baselineFacts, termo } = req.body;
+    const ai = getGenAI();
+
+    if (!ai) {
+      return res.status(400).json({ error: 'Gemini API Key não disponível.' });
+    }
+
+    const prompt = `Analise o rascunho do redator contra a base canônica de fatos conhecidos no contexto do termo: "${termo || 'Tema Geral'}".
+Identifique lacunas de informação cruciais que os concorrentes ou a literatura abordam e que o rascunho NÃO cobriu, além de ângulos inéditos com alto potencial de ganho de informação (dados quantitativos, exceções técnicas, casos de uso reais).
+
+Base Canônica (${(baselineFacts || []).length} fatos):
+${JSON.stringify((baselineFacts || []).slice(0, 30), null, 2)}
+
+Rascunho do Redator:
+"""
+${(candidateDoc || '').slice(0, 3000)}
+"""
+
+Retorne um JSON com o seguinte formato:
+{
+  "gaps": [
+    {
+      "id": "GAP-001",
+      "termo_relacionado": "Nome do termo ou entidade",
+      "angulo_sugerido": "O que abordar para gerar ineditismo",
+      "tipo": "LACUNA_CONCORRENTE | ANGULO_INEDITO | DADOS_QUANTITATIVOS",
+      "explicacao": "Por que esta adição agregará ganho marginal de informação",
+      "exemplo_proposicao": "Exemplo de frase atômica pronta para inclusão"
+    }
+  ]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: DEFAULT_MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        temperature: 0.3,
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{"gaps":[]}');
+    return res.json(parsed);
+  } catch (err: any) {
+    console.error('Error /api/writer/gaps:', err);
+    return res.status(500).json({ error: err.message || 'Falha ao buscar lacunas de informação.' });
+  }
+});
+
+// 2. Transformador de Redundância em Fato Incremental / Novo (Elevação)
+app.post('/api/writer/elevate', async (req, res) => {
+  try {
+    const { fact } = req.body;
+    if (!fact) return res.status(400).json({ error: 'Fato não fornecido.' });
+
+    const ai = getGenAI();
+    if (!ai) return res.status(400).json({ error: 'Gemini API Key não disponível.' });
+
+    const prompt = `O seguinte fato foi classificado como REDUNDANTE (apenas parafraseia o que a web já sabe):
+Sujeito: "${fact.sujeito}"
+Predicado: "${fact.predicado}"
+Objeto: "${fact.objeto}"
+Trecho original: "${fact.trecho_origem || ''}"
+
+Gere uma sugestão de elevação editorial para o redator transformar esta frase em um fato INCREMENTAL ou NOVO.
+Adicione especificidade técnica, dados mensuráveis, contexto de implementação ou uma condicional que torne a afirmação única e rica em ganho informacional.
+
+Retorne um JSON estrito:
+{
+  "factId": "${fact.id}",
+  "trecho_original": "${fact.trecho_origem || ''}",
+  "sugestao_reescrita": "Texto reescrito pronto para o artigo...",
+  "novo_predicado": "...",
+  "novo_objeto": "...",
+  "classificacao_esperada": "INCREMENTAL | NOVO",
+  "score_estimado": 0.85,
+  "estrategia": "Explicação da tática empregada (ex: adição de dado empírico e caso de uso real)"
+}`;
+
+    const response = await ai.models.generateContent({
+      model: DEFAULT_MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        temperature: 0.3,
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    return res.json(parsed);
+  } catch (err: any) {
+    console.error('Error /api/writer/elevate:', err);
+    return res.status(500).json({ error: err.message || 'Falha ao elevar fato redundante.' });
+  }
+});
+
+// 3. Sintetizador de Encheção de Linguiça (Fluff Cutter)
+app.post('/api/writer/synthesize-fluff', async (req, res) => {
+  try {
+    const { trecho, fato } = req.body;
+    const ai = getGenAI();
+    if (!ai) return res.status(400).json({ error: 'Gemini API Key não disponível.' });
+
+    const prompt = `O trecho a seguir é prolixo e repetitivo (consome muitos termos para expressar pouca informação):
+Trecho: "${trecho}"
+Fato atômico subjacente: "${fato?.sujeito || ''} ${fato?.predicado || ''} ${fato?.objeto || ''}"
+
+Reescreva este trecho de forma ultradensa e direta, eliminando palavras de preenchimento ("fluff") e preservando a precisão conceitual.
+
+Retorne JSON:
+{
+  "versao_sintetizada": "...",
+  "motivo_corte": "...",
+  "economia_termos_pct": 50
+}`;
+
+    const response = await ai.models.generateContent({
+      model: DEFAULT_MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        temperature: 0.2,
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    return res.json(parsed);
+  } catch (err: any) {
+    console.error('Error /api/writer/synthesize-fluff:', err);
+    return res.status(500).json({ error: err.message || 'Falha ao sintetizar trecho.' });
+  }
+});
+
+// 4. Gerador Automático de Base Canônica a partir de Termo de Pesquisa
+app.post('/api/writer/benchmark-terms', async (req, res) => {
+  try {
+    const { termo, textosConcorrentes } = req.body;
+    if (!termo && !textosConcorrentes) {
+      return res.status(400).json({ error: 'Informe um termo ou textos de concorrentes.' });
+    }
+
+    const ai = getGenAI();
+    if (!ai) return res.status(400).json({ error: 'Gemini API Key não disponível.' });
+
+    const prompt = `Você deve atuar como o índice canônico de conhecimento de um buscador para o termo: "${termo || 'Assunto Principal'}".
+${textosConcorrentes ? `Textos dos concorrentes fornecidos:\n"""\n${textosConcorrentes.slice(0, 3000)}\n"""` : ''}
+
+Extraia e sintetize a base canônica de 8 a 15 fatos atômicos consensuais que qualquer página nos primeiros resultados do Google já aborda rotineiramente sobre este termo.
+
+Retorne um JSON no formato:
+{
+  "termo": "${termo || ''}",
+  "resumo_consenso": "Síntese em 1 parágrafo do que o mercado já sabe amplamente sobre este termo...",
+  "fatos": [
+    {
+      "id": "FACT-001",
+      "sujeito": "...",
+      "predicado": "...",
+      "objeto": "...",
+      "confianca": 0.98,
+      "trecho_origem": "..."
+    }
+  ]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: DEFAULT_MODEL,
+      contents: prompt,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        temperature: 0.2,
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{"fatos":[]}');
+    return res.json(parsed);
+  } catch (err: any) {
+    console.error('Error /api/writer/benchmark-terms:', err);
+    return res.status(500).json({ error: err.message || 'Falha ao gerar baseline canônica a partir do termo.' });
   }
 });
 

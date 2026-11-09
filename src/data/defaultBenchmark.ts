@@ -121,7 +121,7 @@ export const DEFAULT_KNOWN_FACTS: AtomicFact[] = [
 
 export const DEFAULT_CANDIDATE_DOC = `Impacto de Modelos de Linguagem e Information Gain no SEO Moderno:
 
-A transição de algoritmos puramente lexicais para mecanismos avaliadores de Ganho de Informação estabelece um novo padrão competitivo. Mecanismos de busca algorítmicos utilizam Knowledge Graph para desambiguação de entidades, mas hoje calculam adicionalmente o ganho marginal de cada URL perante a jornada cumulativa do usuário. A indexação vetorial de proposições atômicas permite mensurar a entropia condicional de um novo conteúdo sem depender de palavras-chave literais.
+A transição de algoritmos puramente lexicais para mecanismos avaliadores de Ganho de Informação estabelece um novo padrão competitivo. Mecanismos de busca algorítmicos utilizam Knowledge Graph para desambiguação de entidades, mas hoje calculam adicionalmente o ganho marginal de cada URL perante a jornada cumulativa do usuário. A indexação vetorial de proposições atômicas permite mensurar a entropia condicional de um novo conteúdo sem depender de termos literais.
 
 Modelos neurais particionam parágrafos densos em micro-fatos triplos. Se um artigo repete que uma ontologia formal define classes e axiomas computáveis, a recompensa do Information Gain Score é zero.
 
@@ -140,7 +140,7 @@ export const DEFAULT_ANALYSIS_RESULT: GainAnalysisResponse = {
   sintese_analitica: 'O documento submetido demonstra alto valor informacional líquido com 57% de proposições atômicas inéditas perante a base canônica. Há forte divergência simétrica Jensen-Shannon contra o corpus anterior, especialmente no aprofundamento de indexação vetorial voltada à mensuração de entropia condicional e na introdução do framework de complexidade de Kolmogorov para punição de paráfrases. As redundâncias identificadas (14%) restringem-se à contextualização de axiomas formais, mantendo o ruído estrutural reduzido.',
   html_anotado: `<h3 class="font-headline font-bold text-base mb-4 not-italic font-sans">Impacto de Modelos de Linguagem e Information Gain no SEO Moderno</h3>
 <p class="mb-4">A transição de algoritmos puramente lexicais para mecanismos avaliadores de Ganho de Informação estabelece um novo padrão competitivo. <span class="fact-redundant px-1 py-0.5 rounded cursor-pointer text-xs" data-fact-id="CAND-001" title="Fato Redundante: Ontologias e grafos para desambiguação | Já na base">Mecanismos de busca algorítmicos utilizam Knowledge Graph para desambiguação de entidades</span>, <span class="fact-incremental px-1.5 py-0.5 rounded cursor-pointer font-medium" data-fact-id="CAND-002" title="Fato Incremental: Avaliação do ganho marginal na jornada | Score: 0.65">mas hoje calculam adicionalmente o ganho marginal de cada URL perante a jornada cumulativa do usuário</span>.</p>
-<p class="mb-4"><span class="fact-new px-1.5 py-0.5 rounded cursor-pointer font-medium" data-fact-id="CAND-003" title="Fato Novo: Indexação vetorial para entropia condicional | Score: 0.94">A indexação vetorial de proposições atômicas permite mensurar a entropia condicional de um novo conteúdo</span> sem depender de palavras-chave literais. <span class="fact-new px-1.5 py-0.5 rounded cursor-pointer font-medium" data-fact-id="CAND-004" title="Fato Novo: Modelos neurais particionando parágrafos em tripletos | Score: 0.88">Modelos neurais particionam parágrafos densos em micro-fatos triplos</span>. Se um artigo repete que <span class="fact-redundant px-1 py-0.5 rounded cursor-pointer text-xs" data-fact-id="CAND-005" title="Fato Redundante: Ontologia formal define classes e axiomas | Já na base">uma ontologia formal define classes e axiomas computáveis</span>, a recompensa do Information Gain Score é zero.</p>
+<p class="mb-4"><span class="fact-new px-1.5 py-0.5 rounded cursor-pointer font-medium" data-fact-id="CAND-003" title="Fato Novo: Indexação vetorial para entropia condicional | Score: 0.94">A indexação vetorial de proposições atômicas permite mensurar a entropia condicional de um novo conteúdo</span> sem depender de termos literais. <span class="fact-new px-1.5 py-0.5 rounded cursor-pointer font-medium" data-fact-id="CAND-004" title="Fato Novo: Modelos neurais particionando parágrafos em tripletos | Score: 0.88">Modelos neurais particionam parágrafos densos em micro-fatos triplos</span>. Se um artigo repete que <span class="fact-redundant px-1 py-0.5 rounded cursor-pointer text-xs" data-fact-id="CAND-005" title="Fato Redundante: Ontologia formal define classes e axiomas | Já na base">uma ontologia formal define classes e axiomas computáveis</span>, a recompensa do Information Gain Score é zero.</p>
 <p>Em contrapartida, quando o documento <span class="fact-incremental px-1.5 py-0.5 rounded cursor-pointer font-medium" data-fact-id="CAND-006" title="Fato Incremental: Introdução de Jensen-Shannon Divergence | Score: 0.72">introduz métricas quantificáveis de Jensen-Shannon Divergence</span> e propõe <span class="fact-new px-1.5 py-0.5 rounded cursor-pointer font-medium" data-fact-id="CAND-007" title="Fato Novo: Kolmogorov Complexity para punição de paráfrases | Score: 0.99">o cálculo de compressão semântica via Kolmogorov Complexity aplicada a textos</span>, o motor atribui prioridade de rankeamento pelo acréscimo de novidade estocástica factual real.</p>`,
   fatos_analisados: [
     {
@@ -202,12 +202,12 @@ export const DEFAULT_ANALYSIS_RESULT: GainAnalysisResponse = {
       id: 'CAND-010',
       sujeito: 'Proposições atômicas',
       predicado: 'dispensam',
-      objeto: 'Correspondência literal de palavras-chave',
+      objeto: 'Correspondência literal de termos',
       classificacao: 'NOVO',
       similaridade_cosseno: '0.22 (Baixa)',
       score_marginal: 0.89,
-      justificativa: 'Isolamento semântico contra restrições de keywords literais.',
-      trecho_origem: 'sem depender de palavras-chave literais'
+      justificativa: 'Isolamento semântico contra restrições de termos literais.',
+      trecho_origem: 'sem depender de termos literais'
     },
     {
       id: 'CAND-011',

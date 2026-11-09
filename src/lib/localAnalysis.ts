@@ -1,4 +1,4 @@
-import { AtomicFact, GainAnalysisResponse } from '../types';
+import { AtomicFact, GainAnalysisResponse, InformationGap, FluffItem, ElevationSuggestion } from '../types';
 
 // Stopwords em português para cálculo semântico/léxico e desambiguação
 const PT_STOPWORDS = new Set([
@@ -11,7 +11,7 @@ const PT_STOPWORDS = new Set([
   'muito', 'muitos', 'já', 'quando', 'onde', 'qual', 'quais', 'cada', 'outro', 'outros'
 ]);
 
-function extractKeywords(text: string): Set<string> {
+export function extractTerms(text: string): Set<string> {
   const words = text
     .toLowerCase()
     .normalize('NFD')
@@ -76,12 +76,12 @@ export function analyzeDocumentGainLocally(
 
   const sentences = rawSentences.length > 0 ? rawSentences : [newDoc.trim()];
 
-  // Pre-processar palavras-chave de cada fato do baseline
+  // Pre-processar termos de cada fato do baseline
   const baselineProcessed = baselineFacts.map((f) => {
     const combined = `${f.sujeito} ${f.predicado} ${f.objeto} ${f.trecho_origem || ''}`;
     return {
       fact: f,
-      keywords: extractKeywords(combined),
+      terms: extractTerms(combined),
     };
   });
 
@@ -90,14 +90,14 @@ export function analyzeDocumentGainLocally(
 
   sentences.forEach((sentence, idx) => {
     const factId = `CAND-${String(idx + 1).padStart(3, '0')}`;
-    const sentKeywords = extractKeywords(sentence);
+    const sentTerms = extractTerms(sentence);
 
     // Calcular máxima similaridade com algum fato do baseline
     let maxSim = 0;
     let bestBaselineMatch: AtomicFact | null = null;
 
     baselineProcessed.forEach((b) => {
-      const sim = computeOverlapSimilarity(sentKeywords, b.keywords);
+      const sim = computeOverlapSimilarity(sentTerms, b.terms);
       if (sim > maxSim) {
         maxSim = sim;
         bestBaselineMatch = b.fact;
@@ -142,7 +142,7 @@ export function analyzeDocumentGainLocally(
       // Alta sobreposição de termos e conceitos com fato do baseline
       classificacao = 'REDUNDANTE';
       scoreMarginal = 0.05;
-      simLabel = `${(0.85 + maxSim * 0.15).toFixed(2)} (Alta Sobreposição)`;
+      simLabel = `${(0.85 + maxSim * 0.15).toFixed(2)} (Alta Sobreposição de Termos)`;
       justificativa = bestBaselineMatch
         ? `Sobreposição com [${bestBaselineMatch.id}: ${bestBaselineMatch.sujeito} ${bestBaselineMatch.predicado} ${bestBaselineMatch.objeto}]. Recompensa de ganho nula.`
         : 'Parafraseia proposição já contida no corpus de referência.';
@@ -286,4 +286,115 @@ export function extractBaselineLocally(documentText: string): AtomicFact[] {
       trecho_origem: sentence,
     };
   });
+}
+
+// -------------------------------------------------------------
+// Funções Especializadas para o Estúdio do Redator
+// -------------------------------------------------------------
+
+/**
+ * Identifica lacunas informacionais (Information Gaps) comparando os termos
+ * da base canônica com os termos abordados no rascunho do redator.
+ */
+export function findInformationGapsLocally(
+  candidateDoc: string,
+  baselineFacts: AtomicFact[]
+): InformationGap[] {
+  const candidateTerms = extractTerms(candidateDoc);
+  const gaps: InformationGap[] = [];
+
+  // Mapear fatos da base cujos termos não estão no rascunho do redator
+  baselineFacts.forEach((fact, idx) => {
+    const factTerms = extractTerms(`${fact.sujeito} ${fact.objeto}`);
+    let missingTermsCount = 0;
+    factTerms.forEach((t) => {
+      if (!candidateTerms.has(t)) missingTermsCount++;
+    });
+
+    if (missingTermsCount > 0 && gaps.length < 5) {
+      gaps.push({
+        id: `GAP-00${idx + 1}`,
+        termo_relacionado: fact.sujeito,
+        angulo_sugerido: `Explorar a relação com "${fact.objeto}"`,
+        tipo: 'LACUNA_CONCORRENTE',
+        explicacao: `A base canônica aborda "${fact.sujeito}" com o predicado "${fact.predicado}", mas o seu rascunho ainda não articulou esta dimensão conceitual.`,
+        exemplo_proposicao: `${fact.sujeito} ${fact.predicado} ${fact.objeto}.`,
+      });
+    }
+  });
+
+  // Sugestões de ângulos inéditos / dados quantitativos
+  if (gaps.length < 3) {
+    gaps.push({
+      id: `GAP-NEW-01`,
+      termo_relacionado: 'Métricas Empíricas & Benchmarks',
+      angulo_sugerido: 'Quantificação com dados e taxas percentuais',
+      tipo: 'DADOS_QUANTITATIVOS',
+      explicacao: 'Conteúdos com dados mensuráveis ou experimentos práticos elevam instantaneamente o ganho de informação sobre o consenso textual.',
+      exemplo_proposicao: 'Estudos empíricos demonstram aumento de 42% na retenção de busca ao integrar ontologias estruturadas.',
+    });
+    gaps.push({
+      id: `GAP-NEW-02`,
+      termo_relacionado: 'Casos Limite e Exceções Práticas',
+      angulo_sugerido: 'Limitações e contrapontos técnicos',
+      tipo: 'ANGULO_INEDITO',
+      explicacao: 'A maior parte dos concorrentes aborda apenas os benefícios. Apresentar cenários onde a abordagem falha gera alto ineditismo.',
+      exemplo_proposicao: 'Grafos com mais de 10 milhões de arestas exigem particionamento distribuído para evitar degradação de latência.',
+    });
+  }
+
+  return gaps;
+}
+
+/**
+ * Detecta frases ou parágrafos com alto consumo de termos e baixo valor informacional ("Fluff").
+ */
+export function detectFluffSegmentsLocally(
+  analyzedFacts: AtomicFact[]
+): FluffItem[] {
+  const redundantFacts = analyzedFacts.filter((f) => f.classificacao === 'REDUNDANTE');
+
+  return redundantFacts.map((fact, idx) => {
+    const text = fact.trecho_origem || '';
+    const words = text.split(/\s+/).filter(Boolean);
+    const totalTermos = words.length;
+
+    // Criar uma versão sintetizada concisa da proposição
+    const versaoSintetizada = `${fact.sujeito} ${fact.predicado} ${fact.objeto}.`;
+    const palavrasSintese = versaoSintetizada.split(/\s+/).length;
+    const economiaPct = Math.max(10, Math.round(((totalTermos - palavrasSintese) / Math.max(1, totalTermos)) * 100));
+
+    return {
+      id: `FLUFF-${String(idx + 1).padStart(3, '0')}`,
+      trecho_original: text,
+      total_termos: totalTermos,
+      grau_redundancia: totalTermos > 25 ? 'CRÍTICA' : 'MODERADA',
+      motivo_corte: totalTermos > 25 
+        ? `Consome ${totalTermos} termos para expressar uma relação conceitual já amplamente conhecida, gerando dispersão e paráfrase estocástica.`
+        : 'Expressão prolixa de fato canônico consensual sem acréscimo de valor empírico.',
+      versao_sintetizada: versaoSintetizada,
+      economia_termos_pct: economiaPct,
+    };
+  });
+}
+
+/**
+ * Gera uma sugestão prática de elevação de um fato redundante para torná-lo incremental ou novo.
+ */
+export function generateElevationLocally(fact: AtomicFact): ElevationSuggestion {
+  const sujeito = fact.sujeito || 'Entidade';
+  const predicado = fact.predicado || 'relaciona-se com';
+  const objeto = fact.objeto || 'Conceito base';
+
+  return {
+    factId: fact.id,
+    trecho_original: fact.trecho_origem || `${sujeito} ${predicado} ${objeto}`,
+    fato_original: { sujeito, predicado, objeto },
+    sugestao_reescrita: `Em implementações reais de produção, ${sujeito.toLowerCase()} ${predicado} ${objeto.toLowerCase()} reduzindo a entropia informacional em até 35% quando correlacionado a dados empíricos observados.`,
+    novo_predicado: `${predicado} em cenários avançados mensuráveis`,
+    novo_objeto: `${objeto} com impacto empírico quantificado`,
+    classificacao_esperada: 'INCREMENTAL',
+    score_estimado: 0.72,
+    estrategia: 'Adição de quantificação empírica, especificação de contexto operacional e mitigação de paráfrase genérica.',
+  };
 }

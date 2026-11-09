@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { AtomicFact, GainAnalysisResponse, ThemeMode, UserProfile } from './types';
+import {
+  AtomicFact,
+  GainAnalysisResponse,
+  ThemeMode,
+  UserProfile,
+  FluffItem,
+  InformationGap,
+  EditorialReportData,
+} from './types';
 import {
   DEFAULT_BASELINE_DOC,
   DEFAULT_KNOWN_FACTS,
@@ -21,17 +29,26 @@ import { FactDetailModal } from './components/FactDetailModal';
 import { AuthModal } from './components/AuthModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { AccessRestrictedModal } from './components/AccessRestrictedModal';
-import { analyzeDocumentGainLocally, extractBaselineLocally } from './lib/localAnalysis';
-import { 
-  auth, 
-  syncUserProfile, 
-  subscribeUserProfile, 
-  logoutUser, 
+import { WriterStudio } from './components/WriterStudio';
+import { FluffCutterModal } from './components/FluffCutterModal';
+import { ReferenceTermsModal } from './components/ReferenceTermsModal';
+import { EditorialReportModal } from './components/EditorialReportModal';
+import {
+  analyzeDocumentGainLocally,
+  extractBaselineLocally,
+  findInformationGapsLocally,
+  detectFluffSegmentsLocally,
+} from './lib/localAnalysis';
+import {
+  auth,
+  syncUserProfile,
+  subscribeUserProfile,
+  logoutUser,
   testFirestoreConnection,
-  recordUserAudit 
+  recordUserAudit,
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { CheckCircle2, Sparkles, Layers, Lock, ShieldCheck, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Sparkles, Layers, Lock, ArrowRight, PenTool } from 'lucide-react';
 
 export default function App() {
   // Default to light theme matching the Graph Studio Semântico reference page
@@ -53,6 +70,22 @@ export default function App() {
   const [authReason, setAuthReason] = useState<string | undefined>(undefined);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [isRestrictedModalOpen, setIsRestrictedModalOpen] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // Writer Studio & Specialized Tools State
+  // ---------------------------------------------------------------------------
+  const [activeViewMode, setActiveViewMode] = useState<'analyzer' | 'writer'>('analyzer');
+  const [currentTermo, setCurrentTermo] = useState<string>('Grafos de Conhecimento e SEO');
+  const [fluffItems, setFluffItems] = useState<FluffItem[]>(() =>
+    detectFluffSegmentsLocally(DEFAULT_ANALYSIS_RESULT.fatos_analisados)
+  );
+  const [informationGaps, setInformationGaps] = useState<InformationGap[]>(() =>
+    findInformationGapsLocally(DEFAULT_CANDIDATE_DOC, DEFAULT_KNOWN_FACTS)
+  );
+  const [isLoadingGaps, setIsLoadingGaps] = useState(false);
+  const [isFluffCutterOpen, setIsFluffCutterOpen] = useState(false);
+  const [isTermsBuilderOpen, setIsTermsBuilderOpen] = useState(false);
+  const [isEditorialReportOpen, setIsEditorialReportOpen] = useState(false);
 
   // Monitor Auth State and User Profile
   useEffect(() => {
@@ -210,7 +243,7 @@ export default function App() {
 
       const data = await res.json();
       if (data.score_geral !== undefined && data.fatos_analisados) {
-        setAnalysisResult({
+        const newResult: GainAnalysisResponse = {
           acao: 'analisar_ganho',
           score_geral: data.score_geral,
           classificacao_geral: data.classificacao_geral || 'ALTO GANHO',
@@ -223,15 +256,22 @@ export default function App() {
           sintese_analitica: data.sintese_analitica || '',
           html_anotado: data.html_anotado || candidateText,
           fatos_analisados: data.fatos_analisados || [],
-        });
+        };
+        setAnalysisResult(newResult);
         setHasCommitted(false);
+
+        // Atualizar ferramentas do redator
+        setFluffItems(detectFluffSegmentsLocally(data.fatos_analisados));
+        setInformationGaps(findInformationGapsLocally(candidateText, knownFacts));
+
         showToast(`Auditoria finalizada! Score calculado: ${data.score_geral} / 1.0 (${data.classificacao_geral})`);
         if (currentUser?.uid) recordUserAudit(currentUser.uid);
-        
-        // Smoothly scroll down to metrics
-        setTimeout(() => {
-          document.getElementById('diagnostico-metricas')?.scrollIntoView({ behavior: 'smooth' });
-        }, 150);
+
+        if (activeViewMode === 'analyzer') {
+          setTimeout(() => {
+            document.getElementById('diagnostico-metricas')?.scrollIntoView({ behavior: 'smooth' });
+          }, 150);
+        }
       } else {
         throw new Error(data.error || 'Falha na análise');
       }
@@ -240,16 +280,72 @@ export default function App() {
       const localResult = analyzeDocumentGainLocally(candidateText, knownFacts);
       setAnalysisResult(localResult);
       setHasCommitted(false);
+
+      // Atualizar ferramentas do redator
+      setFluffItems(detectFluffSegmentsLocally(localResult.fatos_analisados));
+      setInformationGaps(findInformationGapsLocally(candidateText, knownFacts));
+
       showToast(`Auditoria finalizada! Score calculado: ${localResult.score_geral} / 1.0 (${localResult.classificacao_geral})`);
       if (currentUser?.uid) recordUserAudit(currentUser.uid);
 
-      // Smoothly scroll down to metrics
-      setTimeout(() => {
-        document.getElementById('diagnostico-metricas')?.scrollIntoView({ behavior: 'smooth' });
-      }, 150);
+      if (activeViewMode === 'analyzer') {
+        setTimeout(() => {
+          document.getElementById('diagnostico-metricas')?.scrollIntoView({ behavior: 'smooth' });
+        }, 150);
+      }
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleRefreshGaps = async () => {
+    setIsLoadingGaps(true);
+    try {
+      const res = await fetch('/api/writer/gaps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidateDoc: candidateText,
+          baselineFacts: knownFacts,
+          termo: currentTermo,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.gaps && Array.isArray(data.gaps)) {
+        setInformationGaps(data.gaps);
+        showToast(`${data.gaps.length} lacunas de informação mapeadas para o termo.`);
+      } else {
+        throw new Error(data.error || 'Falha ao buscar lacunas');
+      }
+    } catch (err) {
+      const localGaps = findInformationGapsLocally(candidateText, knownFacts);
+      setInformationGaps(localGaps);
+      showToast(`${localGaps.length} lacunas de informação mapeadas.`);
+    } finally {
+      setIsLoadingGaps(false);
+    }
+  };
+
+  const handleApplySynthesis = (original: string, synthesized: string) => {
+    if (candidateText.includes(original)) {
+      setCandidateText(candidateText.replace(original, synthesized));
+      showToast('Trecho substituído com sucesso pela versão sintetizada!');
+    } else {
+      showToast('Trecho original não localizado com precisão no texto.');
+    }
+    // Remove o item da lista de fluff
+    setFluffItems((prev) => prev.filter((i) => i.trecho_original !== original));
+  };
+
+  const handleBaselineGeneratedFromTerms = (termo: string, fatos: AtomicFact[], resumo: string) => {
+    setCurrentTermo(termo);
+    setKnownFacts(fatos);
+    setBaselineText(resumo);
+    setHasCommitted(false);
+    showToast(`Base canônica atualizada para o termo "${termo}" com ${fatos.length} proposições!`);
+    // Recalcular lacunas
+    setInformationGaps(findInformationGapsLocally(candidateText, fatos));
   };
 
   const handleCommitNewFacts = () => {
@@ -284,6 +380,7 @@ export default function App() {
   const handleExportMarkdown = () => {
     const md = `# Relatório de Auditoria de Information Gain
 **Data:** ${new Date().toLocaleDateString('pt-BR')}  
+**Termo Principal:** ${currentTermo}  
 **Patente de Referência:** US 11,354,342 B2 (Contextual Information Gain Estimation)  
 **Status do Sistema:** Calibrado | Espaço Vetorial FTS-v4  
 
@@ -330,6 +427,7 @@ ${analysisResult.fatos_analisados
     const payload = {
       patente: 'US 11,354,342 B2',
       framework: 'FTS (Fato Triplo Semântico) v2.4',
+      termo: currentTermo,
       timestamp: new Date().toISOString(),
       metricas_consolidadas: {
         score_geral: analysisResult.score_geral,
@@ -364,6 +462,9 @@ ${analysisResult.fatos_analisados
     setCandidateText(DEFAULT_CANDIDATE_DOC);
     setAnalysisResult(DEFAULT_ANALYSIS_RESULT);
     setHasCommitted(false);
+    setCurrentTermo('Grafos de Conhecimento e SEO');
+    setFluffItems(detectFluffSegmentsLocally(DEFAULT_ANALYSIS_RESULT.fatos_analisados));
+    setInformationGaps(findInformationGapsLocally(DEFAULT_CANDIDATE_DOC, DEFAULT_KNOWN_FACTS));
     showToast('Sessão redefinida para os parâmetros padrão de benchmark.');
   };
 
@@ -387,6 +488,8 @@ ${analysisResult.fatos_analisados
     });
     setHasCommitted(false);
     setSelectedFact(null);
+    setFluffItems([]);
+    setInformationGaps([]);
     showToast('Todos os campos e relatórios foram limpos.');
   };
 
@@ -419,6 +522,22 @@ ${analysisResult.fatos_analisados
   ).length;
   const totalConsolidatedCount = knownFacts.length + (hasCommitted ? 0 : newFactsCount);
 
+  // Relatório Editorial Montado para o Certificado
+  const editorialReportData: EditorialReportData = {
+    titulo_documento: 'Artigo Editorial em Criação',
+    termo_principal: currentTermo || 'Termo em Avaliação',
+    data_auditoria: new Date().toISOString(),
+    auditor_nome: currentUser?.displayName || currentUser?.email || 'Redator Semântico',
+    score_geral: analysisResult.score_geral,
+    classificacao_geral: analysisResult.classificacao_geral,
+    taxa_conteudo_exclusivo: analysisResult.fatos_novos_pct,
+    taxa_consenso_mercado: analysisResult.fatos_redundantes_pct,
+    total_proposicoes_auditadas: analysisResult.fatos_analisados.length,
+    fatos_novos: analysisResult.fatos_analisados.filter((f) => f.classificacao === 'NOVO'),
+    fatos_incrementais: analysisResult.fatos_analisados.filter((f) => f.classificacao === 'INCREMENTAL'),
+    lacunas_atendidas: informationGaps.map((g) => g.termo_relacionado),
+  };
+
   return (
     <div
       className={`min-h-screen flex flex-col font-sans transition-colors ${
@@ -445,8 +564,8 @@ ${analysisResult.fatos_analisados
         onExploreKnowledgeBase={() => scrollToSection('card-baseline-knowledge')}
       />
 
-      {/* 3. Central Visual Graph Canvas (from reference image) */}
-      <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 mb-16">
+      {/* 3. Central Visual Graph Canvas */}
+      <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 mb-12">
         <GraphCanvas
           theme={theme}
           facts={analysisResult.fatos_analisados}
@@ -457,24 +576,41 @@ ${analysisResult.fatos_analisados
         />
       </div>
 
-      {/* 4. Main Functional Workspace (Spacious, airy, uncrowded layout) */}
+      {/* 4. Main Functional Workspace */}
       <section id="workspace" className="max-w-6xl mx-auto w-full px-4 sm:px-6 mb-20">
-        {/* Workspace Title & Description */}
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <span className="text-xs font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 font-mono">
-            Estação de Trabalho Analítica
-          </span>
-          <h2
-            className={`font-serif text-3xl sm:text-4xl font-medium tracking-tight mt-2 mb-3 ${
-              isDark ? 'text-white' : 'text-slate-950'
+        {/* View Mode Toggle: Analisador Ontológico vs. Estúdio do Redator */}
+        <div className="flex justify-center mb-8">
+          <div
+            className={`p-1.5 rounded-2xl border flex items-center gap-1.5 shadow-sm ${
+              isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
             }`}
           >
-            Auditor de Fatos Atômicos & Information Gain
-          </h2>
-          <p className={`text-sm sm:text-base ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-            Insira ou carregue seu corpus base à esquerda e analise o documento candidato à direita para
-            calcular o ganho marginal de informação.
-          </p>
+            <button
+              onClick={() => setActiveViewMode('analyzer')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer ${
+                activeViewMode === 'analyzer'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              <span>Analisador Ontológico</span>
+            </button>
+            <button
+              onClick={() => setActiveViewMode('writer')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer ${
+                activeViewMode === 'writer'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <PenTool className="w-4 h-4" />
+              <span>Estúdio do Redator</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-mono font-bold">
+                NOVO
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Access Banner (Shows if user is unauthenticated or not active) */}
@@ -542,88 +678,148 @@ ${analysisResult.fatos_analisados
           </div>
         )}
 
-        {/* 2 Input Cards with generous space and breathability */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start mb-12">
-          {/* Card 1: Base de Conhecimento */}
-          <BaselineCard
-            theme={theme}
-            baselineText={baselineText}
-            onChangeBaselineText={setBaselineText}
-            knownFacts={knownFacts}
-            onExtractBaseline={handleExtractBaseline}
-            isExtracting={isExtracting}
-            onFileUpload={handleFileUpload}
-            onSelectFact={(f) => setSelectedFact(f)}
-            onClearBaseline={handleClearBaseline}
-          />
-
-          {/* Card 2: Novo Documento para Auditoria */}
-          <CandidateCard
+        {/* MODO 1: ESTÚDIO DO REDATOR */}
+        {activeViewMode === 'writer' ? (
+          <WriterStudio
             theme={theme}
             candidateText={candidateText}
-            onChangeCandidateText={setCandidateText}
-            onAnalyzeGain={handleAnalyzeGain}
+            onUpdateCandidateText={setCandidateText}
+            knownFacts={knownFacts}
+            analysisResult={analysisResult}
             isAnalyzing={isAnalyzing}
-            onClearText={handleClearCandidate}
-            onResetAll={handleResetAll}
+            onRunAudit={handleAnalyzeGain}
+            onOpenFluffCutter={() => setIsFluffCutterOpen(true)}
+            onOpenTermsBuilder={() => setIsTermsBuilderOpen(true)}
+            onOpenEditorialCertificate={() => setIsEditorialReportOpen(true)}
+            fluffItems={fluffItems}
+            informationGaps={informationGaps}
+            isLoadingGaps={isLoadingGaps}
+            onRefreshGaps={handleRefreshGaps}
+            currentTermo={currentTermo}
           />
-        </div>
+        ) : (
+          /* MODO 2: ANALISADOR ONTOLÓGICO CLÁSSICO */
+          <div>
+            {/* Workspace Title & Description */}
+            <div className="text-center max-w-2xl mx-auto mb-10">
+              <span className="text-xs font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 font-mono">
+                Estação de Trabalho Analítica
+              </span>
+              <h2
+                className={`font-serif text-3xl sm:text-4xl font-medium tracking-tight mt-2 mb-3 ${
+                  isDark ? 'text-white' : 'text-slate-950'
+                }`}
+              >
+                Auditor de Fatos Atômicos & Information Gain
+              </h2>
+              <p className={`text-sm sm:text-base ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                Insira ou carregue seu corpus base à esquerda e analise o documento candidato à direita para
+                calcular o ganho marginal de informação.
+              </p>
+            </div>
 
-        {/* Diagnostic Metrics & Synthesis */}
-        <div id="diagnostico-metricas" className="space-y-8">
-          {/* Comparative Balance Panel: clearly shows baseline vs candidate gain difference */}
-          <ComparisonBalance
-            theme={theme}
-            baselineFactsCount={knownFacts.length}
-            candidateTextLength={candidateText.length}
-            candidateWordCount={candidateText.trim() ? candidateText.trim().split(/\s+/).length : 0}
-            metrics={analysisResult}
-          />
+            {/* 2 Input Cards with generous space and breathability */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start mb-12">
+              {/* Card 1: Base de Conhecimento */}
+              <BaselineCard
+                theme={theme}
+                baselineText={baselineText}
+                knownFacts={knownFacts}
+                isExtracting={isExtracting}
+                onTextChange={setBaselineText}
+                onExtractBaseline={handleExtractBaseline}
+                onClear={handleClearBaseline}
+                onFileUpload={handleFileUpload}
+              />
 
-          {/* 4-Card Consolidated Metrics Grid */}
-          <MetricsCards metrics={analysisResult} theme={theme} />
+              {/* Card 2: Novo Documento */}
+              <CandidateCard
+                theme={theme}
+                candidateText={candidateText}
+                isAnalyzing={isAnalyzing}
+                onTextChange={setCandidateText}
+                onAnalyze={handleAnalyzeGain}
+                onClear={handleClearCandidate}
+              />
+            </div>
 
-          {/* Contextual Analytical Synthesis Block */}
-          <SynthesisCard
-            synthesis={analysisResult.sintese_analitica}
-            theme={theme}
-          />
+            {/* Diagnóstico Consolidado */}
+            <div id="diagnostico-metricas" className="space-y-12">
+              {/* Balanço Comparativo */}
+              <ComparisonBalance
+                theme={theme}
+                baselineFactsCount={knownFacts.length}
+                candidateTextLength={candidateText.length}
+                candidateWordCount={candidateText.trim().split(/\s+/).filter(Boolean).length}
+                metrics={{
+                  score_geral: analysisResult.score_geral,
+                  classificacao_geral: analysisResult.classificacao_geral,
+                  fatos_novos_count: analysisResult.fatos_novos_count,
+                  fatos_novos_pct: analysisResult.fatos_novos_pct,
+                  fatos_incrementais_count: analysisResult.fatos_incrementais_count,
+                  fatos_incrementais_pct: analysisResult.fatos_incrementais_pct,
+                  fatos_redundantes_count: analysisResult.fatos_redundantes_count,
+                  fatos_redundantes_pct: analysisResult.fatos_redundantes_pct,
+                }}
+              />
 
-          {/* Results Viewer: Annotated Text and Facts Table Tabs */}
-          <ResultsViewer
-            theme={theme}
-            annotatedHtml={analysisResult.html_anotado}
-            facts={analysisResult.fatos_analisados}
-            onSelectFact={(f) => setSelectedFact(f)}
-          />
+              {/* 3 Metric Summary Cards */}
+              <MetricsCards
+                theme={theme}
+                scoreGeral={analysisResult.score_geral}
+                classificacaoGeral={analysisResult.classificacao_geral}
+                fatosNovosPct={analysisResult.fatos_novos_pct}
+                fatosNovosCount={analysisResult.fatos_novos_count}
+                fatosIncrementaisPct={analysisResult.fatos_incrementais_pct}
+                fatosIncrementaisCount={analysisResult.fatos_incrementais_count}
+                fatosRedundantesPct={analysisResult.fatos_redundantes_pct}
+                fatosRedundantesCount={analysisResult.fatos_redundantes_count}
+              />
 
-          {/* Action Bar for Commit and Exports */}
-          <ActionBar
-            theme={theme}
-            newFactsCount={newFactsCount}
-            totalConsolidatedCount={totalConsolidatedCount}
-            hasCommitted={hasCommitted}
-            onCommitFacts={handleCommitNewFacts}
-            onExportMarkdown={handleExportMarkdown}
-            onExportJson={handleExportJson}
-          />
-        </div>
+              {/* Síntese Analítica */}
+              <SynthesisCard
+                theme={theme}
+                sintese={analysisResult.sintese_analitica}
+                classificacaoGeral={analysisResult.classificacao_geral}
+                scoreGeral={analysisResult.score_geral}
+              />
+
+              {/* Visualizador de Resultados (Highlighting e Tabela) */}
+              <ResultsViewer
+                theme={theme}
+                annotatedHtml={analysisResult.html_anotado}
+                facts={analysisResult.fatos_analisados}
+                onSelectFact={(f) => setSelectedFact(f)}
+              />
+
+              {/* Action Bar for Commit and Exports */}
+              <ActionBar
+                theme={theme}
+                newFactsCount={newFactsCount}
+                totalConsolidatedCount={totalConsolidatedCount}
+                hasCommitted={hasCommitted}
+                onCommitFacts={handleCommitNewFacts}
+                onExportMarkdown={handleExportMarkdown}
+                onExportJson={handleExportJson}
+              />
+            </div>
+          </div>
+        )}
       </section>
 
-      {/* 5. Editorial Explanatory Sections: "O Problema", "Benefícios", "Como Funciona", "CTA Banner" and "Footer" */}
+      {/* 5. Editorial Explanatory Sections */}
       <EditorialSections
         theme={theme}
         onStartAudit={() => scrollToSection('workspace')}
       />
 
-      {/* Fact Detail Modal */}
+      {/* Modais da Aplicação */}
       <FactDetailModal
         fact={selectedFact}
         onClose={() => setSelectedFact(null)}
         theme={theme}
       />
 
-      {/* Authentication Modal (Login / Sign Up) */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => {
@@ -638,7 +834,6 @@ ${analysisResult.fatos_analisados
         }}
       />
 
-      {/* Admin Panel Modal (Exclusive for Alexandre/Admins to manage client subscriptions) */}
       {currentUser && (
         <AdminPanelModal
           isOpen={isAdminPanelOpen}
@@ -647,12 +842,34 @@ ${analysisResult.fatos_analisados
         />
       )}
 
-      {/* Access Restricted / Paywall Modal */}
       <AccessRestrictedModal
         isOpen={isRestrictedModalOpen}
         onClose={() => setIsRestrictedModalOpen(false)}
         currentUser={currentUser}
         onOpenAuth={(mode) => handleOpenAuth(mode, authReason)}
+      />
+
+      {/* Novos Modais Especializados para Redatores */}
+      <FluffCutterModal
+        isOpen={isFluffCutterOpen}
+        onClose={() => setIsFluffCutterOpen(false)}
+        theme={theme}
+        items={fluffItems}
+        onApplySynthesis={handleApplySynthesis}
+      />
+
+      <ReferenceTermsModal
+        isOpen={isTermsBuilderOpen}
+        onClose={() => setIsTermsBuilderOpen(false)}
+        theme={theme}
+        onBaselineGenerated={handleBaselineGeneratedFromTerms}
+      />
+
+      <EditorialReportModal
+        isOpen={isEditorialReportOpen}
+        onClose={() => setIsEditorialReportOpen(false)}
+        theme={theme}
+        reportData={editorialReportData}
       />
 
       {/* Toast Feedback Notification */}

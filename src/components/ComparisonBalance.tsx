@@ -144,7 +144,7 @@ export const ComparisonBalance: React.FC<ComparisonBalanceProps> = ({
               </span>
             </div>
             <p className={`text-xs mt-2 leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-              O novo texto colado possui <strong>{candidateWordCount} palavras</strong> e <strong>{candidateTextLength} caracteres</strong>, decompostos em {totalFatosNovoTexto} proposições mínimas.
+              O novo texto colado possui <strong>{candidateWordCount} termos</strong> e <strong>{candidateTextLength} caracteres</strong>, decompostos em {totalFatosNovoTexto} proposições mínimas.
             </p>
           </div>
 

@@ -21,10 +21,11 @@ import {
   deleteDoc,
   onSnapshot, 
   getDocFromServer,
-  increment
+  increment,
+  addDoc
 } from 'firebase/firestore';
 import firebaseConfigData from '../../firebase-applet-config.json';
-import { UserProfile, UserRole, UserStatus, UserPlan } from '../types';
+import { UserProfile, UserRole, UserStatus, UserPlan, SavedBaseline } from '../types';
 
 export const ADMIN_EMAIL = 'alexrodrigues43@gmail.com';
 
@@ -167,3 +168,43 @@ export async function recordUserAudit(userId: string): Promise<void> {
     console.error('Failed to increment audit count:', err);
   }
 }
+
+// Persistência de Bases Canônicas do Usuário (Redator / Projeto)
+export async function saveUserBaseline(userId: string, baseline: SavedBaseline): Promise<string> {
+  try {
+    const coll = collection(db, 'users', userId, 'baselines');
+    const docRef = await addDoc(coll, {
+      ...baseline,
+      criado_em: new Date().toISOString()
+    });
+    return docRef.id;
+  } catch (err) {
+    console.warn('Erro ao salvar baseline no Firestore:', err);
+    return 'local-' + Date.now();
+  }
+}
+
+export async function getUserBaselines(userId: string): Promise<SavedBaseline[]> {
+  try {
+    const coll = collection(db, 'users', userId, 'baselines');
+    const snap = await getDocs(coll);
+    const list: SavedBaseline[] = [];
+    snap.forEach((d) => {
+      list.push({ id: d.id, ...(d.data() as SavedBaseline) });
+    });
+    return list.sort((a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime());
+  } catch (err) {
+    console.warn('Erro ao recuperar baselines do Firestore:', err);
+    return [];
+  }
+}
+
+export async function deleteUserBaseline(userId: string, baselineId: string): Promise<void> {
+  try {
+    const docRef = doc(db, 'users', userId, 'baselines', baselineId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    console.error('Erro ao deletar baseline:', err);
+  }
+}
+
