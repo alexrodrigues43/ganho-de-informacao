@@ -578,37 +578,121 @@ ${analysisResult.fatos_analisados
 
       {/* 4. Main Functional Workspace */}
       <section id="workspace" className="max-w-6xl mx-auto w-full px-4 sm:px-6 mb-20">
-        {/* View Mode Toggle: Analisador Ontológico vs. Estúdio do Redator */}
-        <div className="flex justify-center mb-8">
-          <div
-            className={`p-1.5 rounded-2xl border flex items-center gap-1.5 shadow-sm ${
-              isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
-            }`}
-          >
+        {/* Seletor de Modo Principal (Destaque Visual Premium) */}
+        <div className="max-w-4xl mx-auto mb-12">
+          <div className="text-center mb-4">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 font-mono">
+              Ambiente Operacional
+            </span>
+            <h3 className={`text-base font-semibold mt-0.5 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+              Selecione o seu Modo de Trabalho
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Botão / Card 1: Analisador Ontológico */}
             <button
+              type="button"
               onClick={() => setActiveViewMode('analyzer')}
-              className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer ${
+              className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden cursor-pointer group flex flex-col justify-between ${
                 activeViewMode === 'analyzer'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? isDark
+                    ? 'bg-amber-950/20 border-amber-500 shadow-xl shadow-amber-500/10 ring-2 ring-amber-500/30'
+                    : 'bg-amber-50/80 border-amber-500 shadow-lg shadow-amber-500/15 ring-2 ring-amber-400/40'
+                  : isDark
+                  ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700 opacity-75 hover:opacity-100'
+                  : 'bg-white border-slate-200 hover:border-slate-300 opacity-75 hover:opacity-100'
               }`}
             >
-              <Layers className="w-4 h-4" />
-              <span>Analisador Ontológico</span>
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all shadow-md ${
+                    activeViewMode === 'analyzer'
+                      ? 'bg-amber-500 text-slate-950 shadow-amber-500/30 scale-105'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  <Layers className="w-6 h-6" />
+                </div>
+
+                {activeViewMode === 'analyzer' ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500 text-slate-950 font-mono shadow-xs">
+                    ✓ Modo Ativo
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition">
+                    Clique para Ativar
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <h4 className={`text-base font-bold flex items-center gap-2 ${
+                  activeViewMode === 'analyzer'
+                    ? isDark ? 'text-amber-300' : 'text-amber-950'
+                    : isDark ? 'text-white' : 'text-slate-900'
+                }`}>
+                  Analisador Ontológico
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  Decomposição em fatos atômicos S-P-O, grafos de entidades e matriz comparativa da patente US 11,354,342 B2.
+                </p>
+              </div>
             </button>
+
+            {/* Botão / Card 2: Estúdio do Redator */}
             <button
+              type="button"
               onClick={() => setActiveViewMode('writer')}
-              className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer ${
+              className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden cursor-pointer group flex flex-col justify-between ${
                 activeViewMode === 'writer'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? isDark
+                    ? 'bg-emerald-950/20 border-emerald-500 shadow-xl shadow-emerald-500/10 ring-2 ring-emerald-500/30'
+                    : 'bg-emerald-50/80 border-emerald-500 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/40'
+                  : isDark
+                  ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700 opacity-75 hover:opacity-100'
+                  : 'bg-white border-slate-200 hover:border-slate-300 opacity-75 hover:opacity-100'
               }`}
             >
-              <PenTool className="w-4 h-4" />
-              <span>Estúdio do Redator</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-mono font-bold">
-                NOVO
-              </span>
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all shadow-md ${
+                    activeViewMode === 'writer'
+                      ? 'bg-emerald-600 text-white shadow-emerald-600/30 scale-105'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  <PenTool className="w-6 h-6" />
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono">
+                    NOVO
+                  </span>
+                  {activeViewMode === 'writer' ? (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-600 text-white font-mono shadow-xs">
+                      ✓ Modo Ativo
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition">
+                      Clique para Ativar
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h4 className={`text-base font-bold flex items-center gap-2 ${
+                  activeViewMode === 'writer'
+                    ? isDark ? 'text-emerald-300' : 'text-emerald-950'
+                    : isDark ? 'text-white' : 'text-slate-900'
+                }`}>
+                  Estúdio do Redator
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  Guia em tempo real, detector de redundâncias (fluff), buscador de lacunas e elevação de proposições.
+                </p>
+              </div>
             </button>
           </div>
         </div>
@@ -780,6 +864,7 @@ ${analysisResult.fatos_analisados
               {/* Síntese Analítica */}
               <SynthesisCard
                 theme={theme}
+                synthesis={analysisResult.sintese_analitica}
                 sintese={analysisResult.sintese_analitica}
                 classificacaoGeral={analysisResult.classificacao_geral}
                 scoreGeral={analysisResult.score_geral}
