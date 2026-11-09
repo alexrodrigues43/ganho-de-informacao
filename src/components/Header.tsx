@@ -1,55 +1,52 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ThemeMode, UserProfile } from '../types';
-import { SemanticoIcon } from './SemanticoIcon';
+import { UserProfile, SupportedLang } from '../types';
+import { LanguageSelector } from './LanguageSelector';
+import { getTranslations } from '../lib/i18n';
 import { 
-  Terminal, 
   RotateCcw, 
-  Sun, 
-  Moon, 
   ChevronDown, 
-  ExternalLink,
-  Sparkles,
-  ArrowRight,
-  Database,
-  BookOpen,
-  User,
-  LogOut,
-  ShieldCheck,
-  Lock,
-  CheckCircle2,
-  Clock
+  Sparkles, 
+  LogIn,
+  LogOut, 
+  ShieldCheck, 
+  Zap,
+  BookOpen, 
+  Database, 
+  ExternalLink 
 } from 'lucide-react';
 
 interface HeaderProps {
-  theme: ThemeMode;
-  onToggleTheme: (mode: ThemeMode) => void;
   knownFactsCount: number;
   onResetSession: () => void;
   currentUser: UserProfile | null;
   onOpenAuth: (mode: 'login' | 'register') => void;
   onOpenAdmin: () => void;
+  onOpenPaywall?: () => void;
   onLogout: () => void;
   onResetAll?: () => void;
+  uiLang?: SupportedLang;
+  onLanguageChange?: (lang: SupportedLang) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  theme,
-  onToggleTheme,
   knownFactsCount,
   onResetSession,
   currentUser,
   onOpenAuth,
   onOpenAdmin,
+  onOpenPaywall,
   onLogout,
   onResetAll,
+  uiLang = 'pt',
+  onLanguageChange,
 }) => {
+  const t = getTranslations(uiLang);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [langMenuOpen, setLangMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
         setUserMenuOpen(false);
       }
     };
@@ -57,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const isDark = theme === 'dark';
+  const isAdmin = currentUser?.role === 'admin';
 
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
@@ -69,421 +66,301 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header
       id="app-header"
-      className={`border-b sticky top-0 z-40 transition-colors backdrop-blur-md ${
-        isDark
-          ? 'border-slate-800 bg-slate-950/95 text-slate-100'
-          : 'border-slate-200/90 bg-white/95 text-slate-800'
-      }`}
+      className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/90 text-slate-800 shadow-2xs"
     >
-      {/* Top Main Navigation Bar matching reference image */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
-        {/* Brand: Semântico - Significado e Sentido */}
-        <div className="flex items-center gap-6">
-          <a
-            href="https://semantico.com.br"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center group cursor-pointer"
-            id="brand-logo-container"
-            title="Semântico — Significado e Sentido"
-          >
-            {/* Horizontal Brand Logo */}
-            <div className={`transition-all rounded-xl p-1 flex items-center ${isDark ? 'bg-white/95 shadow-xs' : ''}`}>
-              <img
-                src="/logo-semantico-horizontal.png"
-                alt="Logo Semântico SEO — Significado e Sentido"
-                className="h-10 sm:h-12 w-auto object-contain"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-          </a>
-
-          {/* Navigation Links matching Graph Studio */}
-          <nav className="hidden lg:flex items-center gap-6 text-sm font-medium">
-            <a
-              href="https://semantico.com.br/servicos.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`transition-colors hover:text-amber-500 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
-            >
-              Serviços
-            </a>
-            <a
-              href="https://semantico.com.br/especiais.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`transition-colors hover:text-amber-500 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
-            >
-              Ferramentas
-            </a>
-            <a
-              href="https://semantico.com.br/blog"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`transition-colors hover:text-amber-500 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
-            >
-              Blog
-            </a>
-            <a
-              href="https://semantico.com.br/podcast-semantico.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`transition-colors hover:text-amber-500 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
-            >
-              Podcasts
-            </a>
-            <a
-              href="https://semantico.com.br/contato.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`transition-colors hover:text-amber-500 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
-            >
-              Contato
-            </a>
-          </nav>
-        </div>
-
-        {/* Right Actions: Language, Golden Pill CTA, and Controls */}
-        <div className="flex items-center gap-3">
-          {/* Flag / Language */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setLangMenuOpen(!langMenuOpen)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                isDark ? 'border-slate-800 hover:bg-slate-900 text-slate-300' : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-              }`}
-            >
-              <span className="text-sm">🇧🇷</span>
-              <span className="text-xs font-semibold">PT</span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
-            </button>
-            {langMenuOpen && (
-              <div
-                className={`absolute right-0 top-full mt-1.5 w-32 rounded-xl border shadow-lg py-1 z-50 text-xs ${
-                  isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-700'
-                }`}
+      {/* TIER 1: TOP BAR (Brand Logo + Public Navigation + CTA + Auth) */}
+      <div className="border-b border-slate-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14 sm:h-16 gap-4">
+            
+            {/* 1. BRAND LOGO */}
+            <div className="flex items-center gap-6">
+              <a
+                href={t.navLinks.services.replace(/\/servicos\.html|\/services\.html|\/servicios\.html/, '') || 'https://semantico.com.br'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center group cursor-pointer shrink-0"
+                id="brand-logo-container"
+                title="Semântico — Significado e Sentido"
               >
-                <div className="px-3 py-1.5 font-medium flex items-center gap-2 bg-amber-50/20 text-amber-600 dark:text-amber-400">
-                  <span>🇧🇷</span> Português
+                <div className="transition-all rounded-xl p-1 flex items-center">
+                  <img
+                    src="/logo-semantico-horizontal.png"
+                    alt="Logo Semântico SEO — Significado e Sentido"
+                    className="h-9 sm:h-11 w-auto object-contain"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
-                <div className="px-3 py-1.5 opacity-60 flex items-center gap-2 cursor-not-allowed">
-                  <span>🇺🇸</span> English
-                </div>
-              </div>
-            )}
-          </div>
+              </a>
 
-          {/* Golden Button "Solicitar Orçamento / Auditar Agora" */}
-          <button
-            type="button"
-            onClick={() => scrollToSection('workspace')}
-            id="btn-nav-primary-action"
-            className="hidden sm:inline-flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold transition-all shadow-xs bg-amber-400 hover:bg-amber-300 text-slate-950 border border-amber-300 active:scale-95 cursor-pointer"
-          >
-            <span>Solicitar Análise</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Admin Panel Button (Exclusive for Alexandre/Admins) */}
-          {currentUser?.role === 'admin' && (
-            <button
-              type="button"
-              onClick={onOpenAdmin}
-              id="btn-nav-admin"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shadow-xs bg-amber-400 hover:bg-amber-300 text-slate-950 border border-amber-300 cursor-pointer animate-in fade-in"
-              title="Gerenciar Licenças e Clientes"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Painel Admin</span>
-            </button>
-          )}
-
-          {/* If NOT logged in: quick login button */}
-          {!currentUser && (
-            <button
-              type="button"
-              onClick={() => onOpenAuth('login')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer"
-            >
-              <Lock className="w-3 h-3 text-amber-500" />
-              <span>Entrar</span>
-            </button>
-          )}
-
-          {/* Light / Dark Mode Toggle */}
-          <div
-            className={`flex items-center p-0.5 rounded-full text-xs font-medium border ${
-              isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
-            }`}
-          >
-            <button
-              type="button"
-              id="btn-theme-light"
-              onClick={() => onToggleTheme('light')}
-              title="Modo Claro"
-              className={`p-1.5 rounded-full transition-all ${
-                !isDark ? 'bg-white text-slate-950 shadow-xs' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Sun className="w-3.5 h-3.5 text-amber-500" />
-            </button>
-            <button
-              type="button"
-              id="btn-theme-dark"
-              onClick={() => onToggleTheme('dark')}
-              title="Modo Escuro"
-              className={`p-1.5 rounded-full transition-all ${
-                isDark ? 'bg-amber-400 text-slate-950 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-700'
-              }`}
-            >
-              <Moon className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* User / Session Reset Menu */}
-          <div className="relative" ref={menuRef}>
-            <button
-              type="button"
-              id="btn-user-menu"
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className={`flex items-center gap-1.5 p-1 rounded-full border transition-colors cursor-pointer ${
-                isDark
-                  ? 'border-slate-800 bg-slate-900 hover:bg-slate-800'
-                  : 'border-slate-200 bg-white hover:bg-slate-50 shadow-xs'
-              }`}
-            >
-              <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
-                  currentUser
-                    ? currentUser.role === 'admin'
-                      ? 'bg-amber-400 text-slate-950 font-bold'
-                      : currentUser.status === 'active'
-                      ? 'bg-emerald-600 text-white font-bold'
-                      : 'bg-amber-500 text-white font-bold'
-                    : isDark
-                    ? 'bg-slate-950 text-slate-400'
-                    : 'bg-slate-100 text-slate-600'
-                }`}
-              >
-                {currentUser ? (
-                  currentUser.displayName?.charAt(0).toUpperCase() || currentUser.email.charAt(0).toUpperCase()
-                ) : (
-                  <User className="w-3.5 h-3.5" />
-                )}
-              </div>
-            </button>
-
-            {userMenuOpen && (
-              <div
-                className={`absolute right-0 top-full mt-2 w-80 rounded-2xl border shadow-xl z-50 p-3 flex flex-col gap-2 text-xs ${
-                  isDark ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-800'
-                }`}
-              >
-                {currentUser ? (
-                  <div className="p-2 border-b border-slate-100 dark:border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-slate-900 dark:text-white block font-headline text-sm">
-                          {currentUser.displayName || 'Assinante'}
-                        </span>
-                        <span className="text-[11px] text-slate-400 font-mono block truncate max-w-[200px]">
-                          {currentUser.email}
-                        </span>
-                      </div>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          currentUser.role === 'admin'
-                            ? 'bg-amber-400 text-slate-950'
-                            : currentUser.status === 'active'
-                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-                            : currentUser.status === 'pending'
-                            ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                            : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
-                        }`}
-                      >
-                        {currentUser.role === 'admin'
-                          ? 'ADMIN'
-                          : currentUser.status === 'active'
-                          ? 'ATIVO'
-                          : currentUser.status === 'pending'
-                          ? 'PENDENTE'
-                          : 'INATIVO'}
-                      </span>
-                    </div>
-
-                    {currentUser.role === 'admin' ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          onOpenAdmin();
-                        }}
-                        className="w-full py-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Abrir Gestão de Licenças</span>
-                      </button>
-                    ) : (
-                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-amber-500" />
-                        <span>
-                          Plano: <strong className="capitalize">{currentUser.plan || 'Mensal'}</strong>
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-2 border-b border-slate-100 dark:border-slate-800 space-y-2">
-                    <span className="font-bold text-slate-900 dark:text-white block">
-                      Área de Assinantes
-                    </span>
-                    <p className="text-[11px] text-slate-400">
-                      Faça login ou crie sua conta para liberar o auditor completo.
-                    </p>
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          onOpenAuth('login');
-                        }}
-                        className="py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 font-bold text-center cursor-pointer"
-                      >
-                        Login
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          onOpenAuth('register');
-                        }}
-                        className="py-1.5 px-3 rounded-lg bg-amber-400 text-slate-950 font-bold text-center cursor-pointer"
-                      >
-                        Cadastrar
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="p-2 border-b border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                      Base ativa: {knownFactsCount} fatos
-                    </span>
-                  </div>
-                </div>
-
+              {/* 2. CENTER LINKS (Matching official Semântico Suite navigation) */}
+              <nav className="hidden lg:flex items-center gap-7 text-xs font-semibold text-slate-700" aria-label="Navegação Principal">
                 <a
-                  href="https://patents.google.com/patent/US11354342B2/en"
+                  href={t.navLinks.contact}
                   target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between px-3 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  rel="noopener noreferrer"
+                  className="hover:text-slate-950 transition-colors cursor-pointer py-2 min-h-[44px] flex items-center"
                 >
-                  <span className="flex items-center gap-2">
-                    <BookOpen className="w-3.5 h-3.5" />
-                    Patente Google (US 11,354,342)
-                  </span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                  {t.nav.contact}
                 </a>
+              </nav>
+            </div>
 
-                {onResetAll && (
+            {/* 3. RIGHT CONTROLS (Wallet + Language + Penultimate: Criar Conta + Last: Entrar / User) */}
+            <div className="flex items-center gap-2.5 shrink-0">
+
+              {/* Central Credit Wallet Badge / Comprar Créditos */}
+              <a
+                href="https://cobrador.semantico.com.br"
+                target="_blank"
+                rel="noopener noreferrer"
+                id="btn-nav-wallet"
+                className={`min-h-[44px] flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border shadow-2xs cursor-pointer whitespace-nowrap shrink-0 ${
+                  !currentUser || isAdmin
+                    ? 'bg-amber-500/10 text-amber-950 border-amber-300 hover:bg-amber-500/20'
+                    : (currentUser.creditsBalance ?? 0) > 0
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100 animate-pulse'
+                }`}
+                title={isAdmin ? `Super Admin: ${t.nav.unlimitedCredits}` : 'Gerenciar créditos no Cobrador Semântico'}
+              >
+                <span className="text-sm" aria-hidden="true">🪙</span>
+                <span>
+                  {!currentUser
+                    ? t.nav.buyCredits
+                    : isAdmin
+                      ? t.nav.unlimitedCredits
+                      : `${currentUser.creditsBalance ?? 0} ${t.nav.credits}`}
+                </span>
+              </a>
+
+              {/* Language Selector (WCAG 2.2 AA) */}
+              <LanguageSelector
+                currentLang={uiLang}
+                onLanguageChange={onLanguageChange || (() => {})}
+                ariaLabel={t.nav.languageSelectAria}
+              />
+
+              {/* PENULTIMATE ITEM: Criar Conta / Assinatura / Super Admin (Golden Button) */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAdmin) {
+                    onOpenAdmin();
+                  } else if (!currentUser) {
+                    onOpenAuth('register');
+                  } else {
+                    onOpenPaywall?.();
+                  }
+                }}
+                className="min-h-[44px] px-4 py-1.5 rounded-full bg-[#f5be38] hover:bg-[#eab308] text-slate-950 text-xs font-bold shadow-2xs hover:shadow-xs transition-all cursor-pointer active:scale-98 flex items-center gap-1.5"
+                title={isAdmin ? t.nav.adminPanel : currentUser ? t.nav.subscription : t.nav.createAccount}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-slate-950" aria-hidden="true" />
+                <span>{isAdmin ? t.nav.superAdmin : currentUser ? t.nav.subscription : t.nav.createAccount}</span>
+              </button>
+
+              {/* LAST ITEM: User Session Dropdown (Logged in) OR Entrar Button (Logged out) */}
+              {currentUser ? (
+                <div className="relative" ref={userMenuRef}>
                   <button
                     type="button"
-                    onClick={() => {
-                      onResetAll();
-                      setUserMenuOpen(false);
-                    }}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors text-left cursor-pointer font-medium"
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="min-h-[44px] flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 transition-colors cursor-pointer"
                   >
-                    <RotateCcw className="w-4 h-4 text-rose-500" />
-                    <span>Limpar Tudo (Reset Geral)</span>
+                    {currentUser.photoURL ? (
+                      <img 
+                        src={currentUser.photoURL} 
+                        alt="" 
+                        className="w-4 h-4 rounded-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="w-2 h-2 rounded-full bg-[#1a5d38]" aria-hidden="true" />
+                    )}
+                    <span className="max-w-[85px] truncate text-[11px] font-bold">
+                      {isAdmin ? 'Admin' : (currentUser.displayName?.split(' ')[0] || currentUser.email?.split('@')[0])}
+                    </span>
+                    <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
                   </button>
-                )}
 
+                  {userMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                      <div className="px-3.5 py-2 border-b border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                            isAdmin ? 'bg-amber-100 text-amber-900 font-bold' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {isAdmin ? t.nav.superAdmin : `${t.nav.status}: ${currentUser.status}`}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">
+                            {currentUser.plan || 'free'}
+                          </span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-800 truncate mt-1">
+                          {currentUser.displayName || t.nav.user}
+                        </p>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {currentUser.email}
+                        </p>
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
+                          <span className="text-slate-500 font-semibold">{t.nav.balance}</span>
+                          <span className="font-bold text-amber-800">
+                            {isAdmin ? t.nav.unlimitedCredits : `${currentUser.creditsBalance ?? 0} ${t.nav.credits}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {!isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUserMenuOpen(false);
+                            onOpenPaywall?.();
+                          }}
+                          className="w-full px-3.5 py-2.5 text-left hover:bg-amber-50 flex items-center gap-2 text-xs font-semibold text-amber-900 cursor-pointer"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-amber-600" aria-hidden="true" />
+                          <span>{t.nav.reloadSub}</span>
+                        </button>
+                      )}
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUserMenuOpen(false);
+                            onOpenAdmin();
+                          }}
+                          className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-[#f5be38]" aria-hidden="true" />
+                          <span>{t.nav.adminPanel}</span>
+                        </button>
+                      )}
+
+                      {/* Benchmark & Session Controls */}
+                      {onResetAll && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onResetAll();
+                            setUserMenuOpen(false);
+                          }}
+                          className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2 text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-rose-500" aria-hidden="true" />
+                          <span>{t.nav.resetAll}</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onResetSession();
+                          setUserMenuOpen(false);
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 text-slate-600 flex items-center gap-2 text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>{t.nav.restoreInitialBenchmark}</span>
+                      </button>
+
+                      <a
+                        href="https://patents.google.com/patent/US11354342B2/en"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between px-3.5 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="flex items-center gap-2">
+                          <BookOpen className="w-3.5 h-3.5" aria-hidden="true" />
+                          <span>{t.nav.patentGoogle}</span>
+                        </span>
+                        <ExternalLink className="w-3 h-3 text-slate-400" aria-hidden="true" />
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          onLogout();
+                        }}
+                        className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50 text-rose-600 flex items-center gap-2 text-xs font-semibold border-t border-slate-100 mt-1 cursor-pointer"
+                      >
+                        <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>{t.nav.logout}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => {
-                    onResetSession();
-                    setUserMenuOpen(false);
-                  }}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+                  onClick={() => onOpenAuth('login')}
+                  className="min-h-[44px] px-3.5 py-1 text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>Restaurar Benchmark Inicial</span>
+                  <LogIn className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
+                  <span>{t.nav.login}</span>
                 </button>
+              )}
 
-                {currentUser && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      onLogout();
-                    }}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left cursor-pointer pt-2 border-t border-slate-100 dark:border-slate-800"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>Sair da Conta</span>
-                  </button>
-                )}
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Sub-Navigation Ribbon Centralized */}
-      <div
-        className={`border-t px-4 sm:px-6 lg:px-8 py-2.5 text-xs font-medium transition-colors ${
-          isDark ? 'border-slate-800/80 bg-slate-950/70 text-slate-400' : 'border-slate-100 bg-slate-50/80 text-slate-600'
-        }`}
-      >
+      {/* TIER 2: SUB-NAVBAR RIBBON (Section Anchors + System Status) */}
+      <div className="bg-slate-50/80 border-t border-slate-100 text-slate-600 px-4 sm:px-6 lg:px-8 py-2.5 text-xs font-medium">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-center relative">
-          <div className="flex items-center justify-center gap-6 sm:gap-8 whitespace-nowrap overflow-x-auto custom-scroll py-0.5">
+          <div className="flex items-center justify-center gap-6 sm:gap-8 whitespace-nowrap overflow-x-auto custom-scroll py-0.5" role="navigation" aria-label="Navegação de Seções">
             <button
+              type="button"
               onClick={() => scrollToSection('o-problema')}
-              className="hover:text-slate-950 dark:hover:text-white transition-colors cursor-pointer"
+              className="hover:text-slate-950 transition-colors cursor-pointer py-1"
             >
-              O Problema
+              {t.subnav.problem}
             </button>
             <button
+              type="button"
               onClick={() => scrollToSection('graph-studio-canvas')}
-              className="hover:text-slate-950 dark:hover:text-white transition-colors flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-semibold cursor-pointer"
+              className="hover:text-slate-950 transition-colors flex items-center gap-1.5 text-emerald-700 font-semibold cursor-pointer py-1"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Graph Studio</span>
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>{t.subnav.graphStudio}</span>
             </button>
             <button
+              type="button"
               onClick={() => scrollToSection('beneficios')}
-              className="hover:text-slate-950 dark:hover:text-white transition-colors cursor-pointer"
+              className="hover:text-slate-950 transition-colors cursor-pointer py-1"
             >
-              Benefícios
+              {t.subnav.benefits}
             </button>
             <button
+              type="button"
               onClick={() => scrollToSection('como-funciona')}
-              className="hover:text-slate-950 dark:hover:text-white transition-colors cursor-pointer"
+              className="hover:text-slate-950 transition-colors cursor-pointer py-1"
             >
-              Como Funciona
+              {t.subnav.howItWorks}
             </button>
             <button
+              type="button"
               onClick={() => scrollToSection('workspace')}
-              className="hover:text-slate-950 dark:hover:text-white transition-colors font-bold text-amber-600 dark:text-amber-400 cursor-pointer"
+              className="hover:text-slate-950 transition-colors font-bold text-amber-600 cursor-pointer py-1"
             >
-              Auditor S-P-O
+              {t.subnav.auditor}
             </button>
           </div>
 
           {/* Live System Indicator */}
           <div className="hidden xl:flex items-center gap-3 text-[11px] font-mono shrink-0 absolute right-0">
             <span className="flex items-center gap-1.5 text-slate-500">
-              <Database className="w-3 h-3 text-amber-500" />
-              <span>{knownFactsCount} fatos em memória</span>
+              <Database className="w-3 h-3 text-amber-500" aria-hidden="true" />
+              <span>{knownFactsCount} {t.subnav.factsInMemory}</span>
             </span>
-            <span className="text-slate-300 dark:text-slate-700">|</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Motor Calibrado
+            <span className="text-slate-300" aria-hidden="true">|</span>
+            <span className="text-emerald-600 font-semibold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+              {t.subnav.calibratedEngine}
             </span>
           </div>
         </div>

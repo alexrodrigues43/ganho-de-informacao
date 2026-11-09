@@ -1,29 +1,27 @@
 import React, { useState } from 'react';
-import {
-  AtomicFact,
-  GainAnalysisResponse,
-  ThemeMode,
-  InformationGap,
-  FluffItem,
+import { 
+  AtomicFact, 
+  GainAnalysisResponse, 
+  FluffItem, 
+  InformationGap, 
   ElevationSuggestion,
+  SupportedLang
 } from '../types';
 import { InformationGapFinder } from './InformationGapFinder';
-import {
-  PenTool,
-  Scissors,
-  Award,
-  Sparkles,
-  ArrowUpRight,
-  TrendingUp,
-  AlertTriangle,
-  Lightbulb,
-  Check,
-  RefreshCw,
-  Compass,
+import { getTranslations } from '../lib/i18n';
+import { 
+  PenTool, 
+  Award, 
+  Scissors, 
+  Sparkles, 
+  TrendingUp, 
+  AlertTriangle, 
+  Check, 
+  RefreshCw, 
+  Compass 
 } from 'lucide-react';
 
 interface WriterStudioProps {
-  theme: ThemeMode;
   candidateText: string;
   onUpdateCandidateText: (text: string) => void;
   knownFacts: AtomicFact[];
@@ -38,10 +36,10 @@ interface WriterStudioProps {
   isLoadingGaps: boolean;
   onRefreshGaps: () => void;
   currentTermo: string;
+  uiLang?: SupportedLang;
 }
 
 export const WriterStudio: React.FC<WriterStudioProps> = ({
-  theme,
   candidateText,
   onUpdateCandidateText,
   knownFacts,
@@ -56,8 +54,9 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
   isLoadingGaps,
   onRefreshGaps,
   currentTermo,
+  uiLang = 'pt',
 }) => {
-  const isDark = theme === 'dark';
+  const t = getTranslations(uiLang);
   const [elevatingFactId, setElevatingFactId] = useState<string | null>(null);
   const [elevationSuggestion, setElevationSuggestion] = useState<ElevationSuggestion | null>(null);
 
@@ -68,44 +67,27 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
     (f) => f.classificacao === 'REDUNDANTE'
   );
 
-  // Métrica Information-to-Terms Ratio
-  const densidadeInformativa = totalTermos > 0
-    ? Number(((analysisResult.fatos_novos_count * 2 + analysisResult.fatos_incrementais_count) / Math.max(1, totalTermos / 50)).toFixed(2))
-    : 0;
-
   const handleElevateFact = async (fact: AtomicFact) => {
     setElevatingFactId(fact.id);
     setElevationSuggestion(null);
 
     try {
-      const res = await fetch('/api/writer/elevate', {
+      const res = await fetch('/api/writer/elevate-fact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fact }),
+        body: JSON.stringify({
+          fact,
+          contexto: fact.trecho_origem || candidateText.slice(0, 500),
+          lang: uiLang,
+        }),
       });
 
       const data = await res.json();
       if (data.sugestao_reescrita) {
         setElevationSuggestion(data);
-      } else {
-        throw new Error(data.error || 'Falha ao gerar elevação');
       }
     } catch (err) {
-      // Fallback local
-      const sujeito = fact.sujeito || 'Entidade';
-      const predicado = fact.predicado || 'apresenta relação com';
-      const objeto = fact.objeto || 'Conceito';
-      setElevationSuggestion({
-        factId: fact.id,
-        trecho_original: fact.trecho_origem || `${sujeito} ${predicado} ${objeto}`,
-        fato_original: { sujeito, predicado, objeto },
-        sugestao_reescrita: `Em experimentos empíricos com o termo "${currentTermo || sujeito}", ${sujeito.toLowerCase()} ${predicado} ${objeto.toLowerCase()} proporcionando um ganho mensurável de 38% em benchmarks comparativos.`,
-        novo_predicado: `${predicado} com evidência empírica`,
-        novo_objeto: `${objeto} quantificado`,
-        classificacao_esperada: 'INCREMENTAL',
-        score_estimado: 0.85,
-        estrategia: 'Adição de métrica empírica e validação experimental ao termo.',
-      });
+      console.error('Falha ao elevar fato com IA:', err);
     } finally {
       setElevatingFactId(null);
     }
@@ -113,44 +95,42 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
 
   const handleApplyElevation = () => {
     if (!elevationSuggestion) return;
-    const original = elevationSuggestion.trecho_original;
-    const replacement = elevationSuggestion.sugestao_reescrita;
+    const { trecho_original, sugestao_reescrita } = elevationSuggestion;
 
-    if (candidateText.includes(original)) {
-      onUpdateCandidateText(candidateText.replace(original, replacement));
+    if (candidateText.includes(trecho_original)) {
+      onUpdateCandidateText(candidateText.replace(trecho_original, sugestao_reescrita));
     } else {
-      onUpdateCandidateText(`${candidateText}\n\n${replacement}`);
+      onUpdateCandidateText(`${candidateText}\n\n${sugestao_reescrita}`);
     }
     setElevationSuggestion(null);
   };
 
-  const handleApplyGapExample = (exampleText: string) => {
-    onUpdateCandidateText(`${candidateText.trim()}\n\n${exampleText}`);
+  const handleApplyGapExample = (example: string) => {
+    const newText = candidateText.trim()
+      ? `${candidateText.trim()}\n\n${example}`
+      : example;
+    onUpdateCandidateText(newText);
   };
 
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Top Bar do Estúdio do Redator */}
-      <div
-        className={`p-6 rounded-3xl border shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 ${
-          isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-        }`}
-      >
+      <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <div className="p-3.5 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-lg shadow-emerald-500/20">
-            <PenTool className="w-6 h-6" />
+            <PenTool className="w-6 h-6" aria-hidden="true" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                Estúdio de Redação & Ineditismo
+              <h2 className="text-xl font-bold text-slate-900">
+                {t.writerStudio.title}
               </h2>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold">
-                Guia em Tempo Real
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-semibold">
+                {t.writerStudio.tagRealtime}
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Escreva sabendo exatamente se cada parágrafo acrescenta novidade ou repete o consenso da web sobre os termos.
+            <p className="text-xs text-slate-500 mt-0.5">
+              {t.writerStudio.subtitle}
             </p>
           </div>
         </div>
@@ -159,26 +139,26 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
           <button
             onClick={onOpenTermsBuilder}
-            className="text-xs px-3.5 py-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 font-medium transition flex items-center gap-1.5"
+            className="min-h-[44px] text-xs px-3.5 py-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 font-medium transition flex items-center gap-1.5 cursor-pointer"
           >
-            <Compass className="w-4 h-4" />
-            Régua por Termo
+            <Compass className="w-4 h-4" aria-hidden="true" />
+            <span>{t.writerStudio.btnTerms}</span>
           </button>
 
           <button
             onClick={onOpenFluffCutter}
-            className="text-xs px-3.5 py-2 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-medium transition flex items-center gap-1.5"
+            className="min-h-[44px] text-xs px-3.5 py-2 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-600 font-medium transition flex items-center gap-1.5 cursor-pointer"
           >
-            <Scissors className="w-4 h-4" />
-            Cirurgião de Fluff ({fluffItems.length})
+            <Scissors className="w-4 h-4" aria-hidden="true" />
+            <span>{t.writerStudio.btnFluff} ({fluffItems.length})</span>
           </button>
 
           <button
             onClick={onOpenEditorialCertificate}
-            className="text-xs px-3.5 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-medium transition flex items-center gap-1.5"
+            className="min-h-[44px] text-xs px-3.5 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 font-medium transition flex items-center gap-1.5 cursor-pointer"
           >
-            <Award className="w-4 h-4" />
-            Laudo & Certificado
+            <Award className="w-4 h-4" aria-hidden="true" />
+            <span>{t.writerStudio.btnCert}</span>
           </button>
         </div>
       </div>
@@ -186,20 +166,16 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
       {/* Editor & Métricas do Redator */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Editor de Texto (2 colunas) */}
-        <div
-          className={`lg:col-span-2 p-6 rounded-3xl border flex flex-col justify-between shadow-sm ${
-            isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-          }`}
-        >
+        <div className="lg:col-span-2 p-6 rounded-3xl border border-slate-200 bg-white flex flex-col justify-between shadow-sm">
           <div>
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Seu Rascunho Editorial em Elaboração
+                {t.writerStudio.draftTitle}
               </span>
               <div className="flex items-center gap-3 text-xs text-slate-500 font-mono">
-                <span>{totalTermos} termos</span>
+                <span>{totalTermos} {t.writerStudio.draftTerms}</span>
                 <span>•</span>
-                <span>{totalCaracteres} caracteres</span>
+                <span>{totalCaracteres} {t.writerStudio.draftChars}</span>
               </div>
             </div>
 
@@ -207,40 +183,40 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
               rows={14}
               value={candidateText}
               onChange={(e) => onUpdateCandidateText(e.target.value)}
-              placeholder="Comece a digitar seu artigo ou cole aqui seu texto para auditar se ele agrega valor real sobre o consenso da web..."
-              className={`w-full p-4 text-sm rounded-2xl border transition resize-none leading-relaxed ${
-                isDark
-                  ? 'bg-slate-800/40 border-slate-700/80 text-slate-100 focus:border-emerald-500'
-                  : 'bg-slate-50/70 border-slate-300 text-slate-900 focus:border-emerald-600'
-              } focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans`}
+              placeholder={t.writerStudio.draftPlaceholder}
+              className="w-full p-4 text-base sm:text-sm rounded-2xl border border-slate-300 bg-slate-50/70 text-slate-900 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans transition resize-none leading-relaxed"
             />
           </div>
 
-          <div className="pt-4 mt-2 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
+          <div className="pt-4 mt-2 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-xs text-slate-500">
               {currentTermo ? (
                 <span>
-                  Termo em foco: <strong className="text-emerald-600 dark:text-emerald-400">{currentTermo}</strong>
+                  {uiLang === 'en' ? 'Focal concept:' : uiLang === 'es' ? 'Concepto focal:' : 'Termo em foco:'}{' '}
+                  <strong className="text-emerald-600">{currentTermo}</strong>
                 </span>
               ) : (
-                <span>Base canônica ativa: <strong>{knownFacts.length} fatos de referência</strong></span>
+                <span>
+                  {uiLang === 'en' ? 'Active canonical baseline:' : uiLang === 'es' ? 'Línea base canónica activa:' : 'Base canônica ativa:'}{' '}
+                  <strong>{knownFacts.length} {t.nav.knownFacts}</strong>
+                </span>
               )}
             </div>
 
             <button
               onClick={onRunAudit}
               disabled={isAnalyzing}
-              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 disabled:opacity-50"
+              className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
             >
               {isAnalyzing ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Calculando Information Gain...
+                  <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  <span>{t.candidate.btnAnalyzing}</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" />
-                  Auditar Ganho de Informação
+                  <Sparkles className="w-4 h-4" aria-hidden="true" />
+                  <span>{uiLang === 'en' ? 'Audit Information Gain' : uiLang === 'es' ? 'Auditar Ganancia de Información' : 'Auditar Ganho de Informação'}</span>
                 </>
               )}
             </button>
@@ -250,60 +226,63 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
         {/* Painel Lateral do Redator (Diagnóstico Rápido & Elevação) */}
         <div className="space-y-6">
           {/* Diagnóstico de Densidade & Score */}
-          <div
-            className={`p-6 rounded-3xl border shadow-sm ${
-              isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-            }`}
-          >
+          <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center justify-between">
-              Termômetro de Ineditismo
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              <span>{uiLang === 'en' ? 'Novelty Gauge' : uiLang === 'es' ? 'Termómetro de Novedad' : 'Termômetro de Ineditismo'}</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 text-slate-700">
                 Score: {analysisResult.score_geral.toFixed(2)}
               </span>
             </h3>
 
             {/* Score Bar */}
             <div className="space-y-2">
-              <div className="w-full h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden flex">
+              <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden flex">
                 <div
                   style={{ width: `${analysisResult.fatos_novos_pct}%` }}
                   className="bg-emerald-500 h-full transition-all"
-                  title="Fatos Novos"
+                  title={t.metrics.newFacts}
                 />
                 <div
                   style={{ width: `${analysisResult.fatos_incrementais_pct}%` }}
                   className="bg-amber-500 h-full transition-all"
-                  title="Fatos Incrementais"
+                  title={t.metrics.incrementalFacts}
                 />
                 <div
                   style={{ width: `${analysisResult.fatos_redundantes_pct}%` }}
-                  className="bg-slate-400 dark:bg-slate-600 h-full transition-all"
-                  title="Fatos Redundantes"
+                  className="bg-slate-400 h-full transition-all"
+                  title={t.metrics.redundantFacts}
                 />
               </div>
 
               <div className="flex justify-between text-[11px] text-slate-500 pt-1 font-medium">
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  {analysisResult.fatos_novos_pct}% Inédito
+                <span className="text-emerald-600">
+                  {analysisResult.fatos_novos_pct}% {uiLang === 'en' ? 'Novel' : uiLang === 'es' ? 'Inédito' : 'Inédito'}
                 </span>
-                <span className="text-amber-600 dark:text-amber-400">
-                  {analysisResult.fatos_incrementais_pct}% Incremental
+                <span className="text-amber-600">
+                  {analysisResult.fatos_incrementais_pct}% {uiLang === 'en' ? 'Incremental' : uiLang === 'es' ? 'Incremental' : 'Incremental'}
                 </span>
                 <span className="text-slate-500">
-                  {analysisResult.fatos_redundantes_pct}% Consensual
+                  {analysisResult.fatos_redundantes_pct}% {uiLang === 'en' ? 'Consensus' : uiLang === 'es' ? 'Consenso' : 'Consensual'}
                 </span>
               </div>
             </div>
 
             {/* Alerta de Redundância se houver fatos repetidos */}
             {redundantFacts.length > 0 && (
-              <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{redundantFacts.length} proposição(ões) redundante(s)</span>
+              <div className="mt-5 pt-4 border-t border-slate-200 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-amber-600">
+                  <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span>
+                    {redundantFacts.length}{' '}
+                    {uiLang === 'en' ? 'redundant proposition(s)' : uiLang === 'es' ? 'proposición(es) redundante(s)' : 'proposição(ões) redundante(s)'}
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  O texto parafraseia conceitos sem acrescentar novos predicados. Escolha um fato abaixo para elevar com IA:
+                <p className="text-[11px] text-slate-500">
+                  {uiLang === 'en'
+                    ? 'The text paraphrases concepts without adding new predicates. Elevate a fact below with AI:'
+                    : uiLang === 'es'
+                    ? 'El texto parafrasea conceptos sin agregar nuevos predicados. Elija un hecho abajo para elevar con IA:'
+                    : 'O texto parafraseia conceitos sem acrescentar novos predicados. Escolha um fato abaixo para elevar com IA:'}
                 </p>
 
                 {/* Lista de Fatos Redundantes para Elevação com 1 Clique */}
@@ -311,12 +290,10 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
                   {redundantFacts.map((fact) => (
                     <div
                       key={fact.id}
-                      className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
-                        isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'
-                      }`}
+                      className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs flex items-center justify-between gap-2"
                     >
                       <div className="truncate">
-                        <strong className="text-slate-800 dark:text-slate-200">
+                        <strong className="text-slate-800">
                           {fact.sujeito}
                         </strong>{' '}
                         <span className="text-slate-500">{fact.predicado}</span>
@@ -324,14 +301,14 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
                       <button
                         onClick={() => handleElevateFact(fact)}
                         disabled={elevatingFactId === fact.id}
-                        className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-medium shrink-0 transition flex items-center gap-1 disabled:opacity-50"
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-medium shrink-0 transition flex items-center gap-1 disabled:opacity-50 cursor-pointer min-h-[36px]"
                       >
                         {elevatingFactId === fact.id ? (
-                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
                         ) : (
-                          <Sparkles className="w-3 h-3" />
+                          <Sparkles className="w-3 h-3" aria-hidden="true" />
                         )}
-                        Elevar Fato
+                        <span>{t.writerStudio.btnElevate}</span>
                       </button>
                     </div>
                   ))}
@@ -342,44 +319,38 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
 
           {/* Modal / Card de Sugestão de Elevação Concluída */}
           {elevationSuggestion && (
-            <div
-              className={`p-5 rounded-3xl border shadow-md space-y-3 animate-fade-in ${
-                isDark
-                  ? 'bg-slate-900 border-amber-500/40 text-slate-100'
-                  : 'bg-amber-50/50 border-amber-300 text-slate-900'
-              }`}
-            >
+            <div className="p-5 rounded-3xl border border-amber-300 bg-amber-50/50 text-slate-900 shadow-md space-y-3 animate-fade-in">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                  <TrendingUp className="w-4 h-4" />
-                  Sugestão de Elevação Concluída
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4" aria-hidden="true" />
+                  <span>{uiLang === 'en' ? 'Elevation Completed' : uiLang === 'es' ? 'Elevación Completada' : 'Sugestão de Elevação Concluída'}</span>
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-semibold">
-                  Ganho Estimado: +{Math.round(elevationSuggestion.score_estimado * 100)}%
+                  {uiLang === 'en' ? 'Estimated Gain' : uiLang === 'es' ? 'Ganancia Estimada' : 'Ganho Estimado'}: +{Math.round(elevationSuggestion.score_estimado * 100)}%
                 </span>
               </div>
 
-              <p className="text-xs text-slate-600 dark:text-slate-300 italic font-serif p-3 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+              <p className="text-xs text-slate-600 italic font-serif p-3 rounded-xl bg-white/60 border border-slate-200">
                 "{elevationSuggestion.sugestao_reescrita}"
               </p>
 
               <p className="text-[11px] text-slate-500">
-                Estratégia: {elevationSuggestion.estrategia}
+                {uiLang === 'en' ? 'Strategy' : uiLang === 'es' ? 'Estrategia' : 'Estratégia'}: {elevationSuggestion.estrategia}
               </p>
 
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   onClick={() => setElevationSuggestion(null)}
-                  className="px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+                  className="min-h-[44px] px-3.5 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-200 transition cursor-pointer"
                 >
-                  Descartar
+                  {t.common.cancel}
                 </button>
                 <button
                   onClick={handleApplyElevation}
-                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+                  className="min-h-[44px] px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  Aplicar ao Rascunho
+                  <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>{t.writerStudio.btnApplyElevation}</span>
                 </button>
               </div>
             </div>
@@ -389,11 +360,11 @@ export const WriterStudio: React.FC<WriterStudioProps> = ({
 
       {/* Seção de Mapeamento de Lacunas de Informação */}
       <InformationGapFinder
-        theme={theme}
         gaps={informationGaps}
         isLoading={isLoadingGaps}
         onApplyGapExample={handleApplyGapExample}
         onRefreshGaps={onRefreshGaps}
+        uiLang={uiLang}
       />
     </div>
   );

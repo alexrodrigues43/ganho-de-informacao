@@ -4,6 +4,7 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signInWithPopup, 
+  signInWithRedirect,
   GoogleAuthProvider, 
   signOut, 
   onAuthStateChanged,
@@ -44,7 +45,33 @@ export const db = firebaseConfigData.firestoreDatabaseId
   ? getFirestore(app, firebaseConfigData.firestoreDatabaseId)
   : getFirestore(app);
 
+// Central Database for the Suite (semantico-suite-core)
+export const centralDb = getFirestore(app, 'semantico-suite-core');
+
 const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+/**
+ * Sanitiza recursivamente objetos removendo campos undefined para compatibilidade com o Firestore
+ */
+export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== undefined) {
+      if (val && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+        clean[key] = sanitizeForFirestore(val);
+      } else {
+        clean[key] = val;
+      }
+    }
+  }
+  return clean;
+}
+
+export function isSuperAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  return email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
+}
 
 // Connection test as required by Firebase skill
 export async function testFirestoreConnection(): Promise<boolean> {
@@ -52,7 +79,6 @@ export async function testFirestoreConnection(): Promise<boolean> {
     await getDocFromServer(doc(db, '_connection_test', 'ping'));
     return true;
   } catch (error) {
-    // If permission denied, connection to server is still established
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.warn('Firebase client is offline. Verify network/config.');
       return false;
@@ -61,38 +87,71 @@ export async function testFirestoreConnection(): Promise<boolean> {
   }
 }
 
-// Ensure user document exists upon login/registration
+// Ensure user document exists upon login/registration in Central Suite
 export async function syncUserProfile(user: FirebaseUser): Promise<UserProfile> {
-  const userRef = doc(db, 'users', user.uid);
+  const userRef = doc(centralDb, 'users', user.uid);
   const snap = await getDoc(userRef);
-
-  const isAdmin = user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const isSuperAdmin = isSuperAdminEmail(user.email);
+  const now = new Date().toISOString();
 
   if (snap.exists()) {
     const existing = snap.data() as UserProfile;
-    // Auto-promote admin email if not already
-    if (isAdmin && existing.role !== 'admin') {
-      await updateDoc(userRef, { role: 'admin', status: 'active' });
-      return { ...existing, role: 'admin', status: 'active' };
+    const updates: Partial<UserProfile> = {
+      lastAppUsed: 'Analisador de Ganho de Informação',
+      displayName: user.displayName || existing.displayName || user.email?.split('@')[0] || 'Usuário Semântico',
+      photoURL: user.photoURL || existing.photoURL || '',
+    };
+
+    if (isSuperAdmin) {
+      updates.role = 'admin';
+      updates.status = 'active';
+      updates.plan = 'lifetime';
+      updates.creditsBalance = 999999;
     }
-    return existing;
+
+    await updateDoc(userRef, sanitizeForFirestore(updates));
+    return { ...existing, ...updates };
   }
 
-  // Create initial profile
+  // Create initial profile in Central Suite Core
   const newProfile: UserProfile = {
     uid: user.uid,
     email: user.email || '',
-    displayName: user.displayName || user.email?.split('@')[0] || 'Usuário',
-    role: isAdmin ? 'admin' : 'client',
-    status: isAdmin ? 'active' : 'pending',
-    plan: isAdmin ? 'lifetime' : 'monthly',
-    expiresAt: isAdmin ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    createdAt: new Date().toISOString(),
-    notes: isAdmin ? 'Super Administrador do Sistema' : 'Novo cadastro aguardando liberação',
+    displayName: user.displayName || user.email?.split('@')[0] || 'Usuário Semântico',
+    photoURL: user.photoURL || '',
+    role: isSuperAdmin ? 'admin' : 'client',
+    status: 'active',
+    plan: isSuperAdmin ? 'lifetime' : 'trial',
+    creditsBalance: isSuperAdmin ? 999999 : 10,
+    creditsUsed: 0,
+    createdAt: now,
+    lastAppUsed: 'Analisador de Ganho de Informação',
+    notes: isSuperAdmin ? 'Super Administrador Automático' : 'Trial inicial da Suíte',
     auditsCount: 0
   };
 
-  await setDoc(userRef, newProfile);
+  await setDoc(userRef, sanitizeForFirestore(newProfile));
+
+  // Grava transação inicial de degustação
+  if (!isSuperAdmin) {
+    try {
+      const txRef = doc(collection(centralDb, 'credit_transactions'));
+      await setDoc(txRef, {
+        id: txRef.id,
+        uid: user.uid,
+        userEmail: user.email || '',
+        type: 'trial',
+        app: 'Analisador de Ganho de Informação',
+        amount: 10,
+        balanceAfter: 10,
+        description: 'Bônus de degustação da Suíte Semântico (10 créditos)',
+        timestamp: now,
+      });
+    } catch (txErr) {
+      console.warn('[Carteira] Falha ao registrar transação de trial:', txErr);
+    }
+  }
+
   return newProfile;
 }
 
@@ -104,7 +163,11 @@ export async function loginWithEmail(email: string, pass: string): Promise<UserP
 export async function registerWithEmail(email: string, pass: string, name: string): Promise<UserProfile> {
   const cred = await createUserWithEmailAndPassword(auth, email, pass);
   if (name && cred.user) {
-    await updateProfile(cred.user, { displayName: name });
+    try {
+      await updateProfile(cred.user, { displayName: name });
+    } catch (e) {
+      console.warn('Could not set displayName:', e);
+    }
   }
   return await syncUserProfile(cred.user);
 }
@@ -114,12 +177,19 @@ export async function loginWithGoogle(): Promise<UserProfile> {
   return await syncUserProfile(cred.user);
 }
 
+export async function loginWithGoogleRedirect(): Promise<void> {
+  await signInWithRedirect(auth, googleProvider);
+}
+
 export async function logoutUser(): Promise<void> {
   await signOut(auth);
 }
 
-export function subscribeUserProfile(uid: string, callback: (profile: UserProfile | null) => void) {
-  const userRef = doc(db, 'users', uid);
+/**
+ * Escuta em tempo real o saldo da carteira central no semantico-suite-core
+ */
+export function subscribeCentralWallet(uid: string, callback: (profile: UserProfile | null) => void) {
+  const userRef = doc(centralDb, 'users', uid);
   return onSnapshot(userRef, (snap) => {
     if (snap.exists()) {
       callback(snap.data() as UserProfile);
@@ -127,8 +197,60 @@ export function subscribeUserProfile(uid: string, callback: (profile: UserProfil
       callback(null);
     }
   }, (err) => {
-    console.warn('User profile subscription notice:', err.message);
+    console.warn('[Carteira Central] Erro ao sincronizar carteira:', err);
   });
+}
+
+export const subscribeUserProfile = subscribeCentralWallet;
+
+/**
+ * Debita créditos atomicamente na base central semantico-suite-core e registra no extrato
+ */
+export async function deductCredits(
+  uid: string,
+  amount: number,
+  actionDescription: string,
+  userEmail: string
+): Promise<boolean> {
+  const isSuperAdmin = isSuperAdminEmail(userEmail);
+  if (isSuperAdmin) return true; // Super Admin possui créditos infinitos
+
+  const userRef = doc(centralDb, 'users', uid);
+  const snap = await getDoc(userRef);
+  if (!snap.exists()) return false;
+
+  const currentData = snap.data() as UserProfile;
+  const currentBalance = currentData.creditsBalance ?? 0;
+  if (currentBalance < amount) {
+    return false; // Saldo insuficiente
+  }
+
+  const now = new Date().toISOString();
+  await updateDoc(userRef, {
+    creditsBalance: increment(-amount),
+    creditsUsed: increment(amount),
+    lastAppUsed: 'Analisador de Ganho de Informação',
+  });
+
+  // Registra no extrato de transações
+  try {
+    const txRef = doc(collection(centralDb, 'credit_transactions'));
+    await setDoc(txRef, {
+      id: txRef.id,
+      uid,
+      userEmail,
+      type: 'usage',
+      app: 'Analisador de Ganho de Informação',
+      amount: -amount,
+      balanceAfter: currentBalance - amount,
+      description: actionDescription,
+      timestamp: now,
+    });
+  } catch (err) {
+    console.warn('[Carteira] Falha ao registrar transação no extrato:', err);
+  }
+
+  return true;
 }
 
 // Admin: Fetch all registered users
@@ -205,6 +327,21 @@ export async function deleteUserBaseline(userId: string, baselineId: string): Pr
     await deleteDoc(docRef);
   } catch (err) {
     console.error('Erro ao deletar baseline:', err);
+  }
+}
+
+/**
+ * Persist UI language to centralDb user profile
+ */
+export async function updateUserUiLang(uid: string, uiLang: 'pt' | 'en' | 'es'): Promise<void> {
+  try {
+    const userCentralRef = doc(centralDb, 'users', uid);
+    await updateDoc(userCentralRef, {
+      uiLang,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.warn('[i18n] Falha ao sincronizar uiLang com centralDb:', err);
   }
 }
 

@@ -1,25 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from "react";
 import { 
   X, 
   Mail, 
   Lock, 
   User, 
   ArrowRight, 
-  Sparkles, 
   AlertCircle, 
   CheckCircle2, 
-  Loader2,
-  ShieldCheck
-} from 'lucide-react';
-import { SemanticoIcon } from './SemanticoIcon';
-import { loginWithEmail, registerWithEmail, loginWithGoogle } from '../lib/firebase';
-import { UserProfile } from '../types';
+  Sparkles,
+  ShieldCheck,
+  Eye,
+  EyeOff
+} from "lucide-react";
+import { loginWithGoogle, loginWithGoogleRedirect, loginWithEmail, registerWithEmail } from "../lib/firebase";
+import { SemanticoLogo } from "./SemanticoLogo";
+import { UserProfile } from "../types";
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (profile: UserProfile) => void;
-  initialMode?: 'login' | 'register';
+  initialMode?: "login" | "register";
   redirectReason?: string;
 }
 
@@ -27,289 +28,301 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  initialMode = 'login',
-  redirectReason,
+  initialMode = "login",
+  redirectReason
 }) => {
-  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [mode, setMode] = useState<"login" | "register">(initialMode);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showRedirectFallback, setShowRedirectFallback] = useState(false);
+
+  useEffect(() => {
+    setMode(initialMode);
+    setErrorMessage(null);
+  }, [initialMode, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccessMsg(null);
-    setLoading(true);
-
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    setErrorMessage(null);
+    setShowRedirectFallback(false);
     try {
-      if (mode === 'login') {
-        const profile = await loginWithEmail(email.trim(), password);
-        setSuccessMsg('Login realizado com sucesso!');
-        setTimeout(() => {
-          onSuccess(profile);
-          onClose();
-        }, 500);
-      } else {
-        if (!name.trim()) {
-          throw new Error('Por favor, preencha o seu nome.');
-        }
-        if (password.length < 6) {
-          throw new Error('A senha deve ter pelo menos 6 caracteres.');
-        }
-        const profile = await registerWithEmail(email.trim(), password, name.trim());
-        setSuccessMsg('Conta criada com sucesso! Verificando permissões...');
-        setTimeout(() => {
-          onSuccess(profile);
-          onClose();
-        }, 600);
-      }
+      const profile = await loginWithGoogle();
+      onSuccess(profile);
+      onClose();
     } catch (err: any) {
-      console.error('Auth error:', err);
-      let msg = err.message || 'Ocorreu um erro ao processar sua solicitação.';
-      if (msg.includes('user-not-found') || msg.includes('wrong-password') || msg.includes('invalid-credential')) {
-        msg = 'E-mail ou senha incorretos.';
-      } else if (msg.includes('email-already-in-use')) {
-        msg = 'Este e-mail já está cadastrado. Tente fazer login.';
-      } else if (msg.includes('weak-password')) {
-        msg = 'A senha é muito fraca. Utilize pelo menos 6 caracteres.';
-      } else if (msg.includes('invalid-email')) {
-        msg = 'Formato de e-mail inválido.';
+      console.error("Google Auth error:", err);
+      if (err.code === "auth/popup-closed-by-user") {
+        setErrorMessage("A janela de autenticação foi fechada antes de concluir o login.");
+        setShowRedirectFallback(true);
+      } else if (err.code === "auth/popup-blocked") {
+        setErrorMessage("O pop-up de login foi bloqueado pelo seu navegador.");
+        setShowRedirectFallback(true);
+      } else if (err.code === "auth/cancelled-popup-request") {
+        setErrorMessage("Requisição cancelada.");
+      } else {
+        setErrorMessage(err.message || "Erro ao conectar via Google. Tente novamente.");
+        setShowRedirectFallback(true);
       }
-      setError(msg);
     } finally {
-      setLoading(false);
+      setIsGoogleLoading(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setError(null);
-    setLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      setErrorMessage("Por favor, preencha todos os campos obrigatórios.");
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage(null);
+
     try {
-      const profile = await loginWithGoogle();
-      setSuccessMsg('Conectado via Google com sucesso!');
-      setTimeout(() => {
-        onSuccess(profile);
-        onClose();
-      }, 500);
+      let profile: UserProfile;
+      if (mode === "login") {
+        profile = await loginWithEmail(email, password);
+      } else {
+        profile = await registerWithEmail(email, password, displayName);
+      }
+      onSuccess(profile);
+      onClose();
     } catch (err: any) {
-      console.error('Google login error:', err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setError(err.message || 'Falha ao autenticar com o Google.');
+      console.error("Auth error:", err);
+      if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found") {
+        setErrorMessage("E-mail ou senha incorretos. Verifique suas credenciais.");
+      } else if (err.code === "auth/email-already-in-use") {
+        setErrorMessage("Este e-mail já está cadastrado. Tente fazer login.");
+      } else if (err.code === "auth/weak-password") {
+        setErrorMessage("A senha deve ter no mínimo 6 caracteres.");
+      } else if (err.code === "auth/invalid-email") {
+        setErrorMessage("Formato de e-mail inválido.");
+      } else {
+        setErrorMessage(err.message || "Ocorreu um erro na autenticação.");
       }
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
       <div 
-        className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden"
+        className="bg-[#0f1117] border border-slate-800 text-slate-100 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden relative"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header Banner */}
-        <div className="p-6 pb-4 border-b border-slate-100 dark:border-slate-800/80 flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center p-1.5 border border-slate-200 shadow-2xs">
-              <SemanticoIcon className="w-full h-full" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white font-headline">
-                {mode === 'login' ? 'Acessar o Semântico' : 'Criar Nova Conta'}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {mode === 'login' ? 'Entre com suas credenciais de assinante' : 'Cadastre-se para solicitar sua liberação de acesso'}
-              </p>
-            </div>
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+          title="Fechar"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Modal Header */}
+        <div className="p-6 pb-4 text-center border-b border-slate-800/80">
+          <div className="flex justify-center mb-3">
+            <SemanticoLogo variant="light" size="md" />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <h2 className="text-xl font-black tracking-tight text-white">
+            {mode === "login" ? "Entrar no Semântico" : "Criar sua Conta"}
+          </h2>
+          <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+            {mode === "login" 
+              ? "Acesse sua rede semântica e ferramentas de IA ontológica" 
+              : "Cadastre-se para solicitar liberação do seu acesso à plataforma"}
+          </p>
+
+          {/* Mode Switch Tabs */}
+          <div className="flex bg-slate-900/90 p-1 rounded-xl border border-slate-800 mt-5">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setErrorMessage(null);
+              }}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                mode === "login"
+                  ? "bg-[#fdd910] text-black shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Fazer Login
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("register");
+                setErrorMessage(null);
+              }}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                mode === "register"
+                  ? "bg-[#fdd910] text-black shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Criar Conta
+            </button>
+          </div>
         </div>
 
-        {/* Optional Redirect reason note */}
-        {redirectReason && (
-          <div className="mx-6 mt-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
-            <span>{redirectReason}</span>
-          </div>
-        )}
-
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {error && (
-            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
+        <div className="p-6 pt-4 space-y-4">
+          {/* Optional reason banner */}
+          {redirectReason && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-2.5 text-xs text-amber-200">
+              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{redirectReason}</span>
             </div>
           )}
 
-          {successMsg && (
-            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
-          {mode === 'register' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Seu Nome Completo
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: Alexandre Rodrigues"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
-                />
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-3 bg-red-950/70 border border-red-800/80 rounded-xl space-y-2 text-xs text-red-200 animate-in fade-in">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{errorMessage}</span>
               </div>
+              {showRedirectFallback && (
+                <button
+                  type="button"
+                  onClick={() => loginWithGoogleRedirect()}
+                  className="w-full mt-1.5 py-1.5 px-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white font-semibold text-[11px] transition-colors flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                >
+                  <span>Entrar por Redirecionamento (Sem Pop-up)</span>
+                  <ArrowRight className="w-3 h-3 text-[#fdd910]" />
+                </button>
+              )}
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              E-mail
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@email.com"
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Senha
-              </label>
-            </div>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-2 py-3 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Processando...</span>
-              </>
-            ) : mode === 'login' ? (
-              <>
-                <span>Entrar no Sistema</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            ) : (
-              <>
-                <span>Criar Minha Conta</span>
-                <Sparkles className="w-4 h-4" />
-              </>
-            )}
-          </button>
-
-          {/* Divider */}
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200 dark:border-slate-800" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white dark:bg-slate-900 px-2 text-slate-400">
-                ou continue com
-              </span>
-            </div>
-          </div>
-
-          {/* Google Login */}
+          {/* Google 1-Click Login Button */}
           <button
             type="button"
             onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200 text-sm font-medium transition-colors flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
+            disabled={isGoogleLoading || isLoading}
+            className="w-full py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-bold text-xs flex items-center justify-center gap-2.5 border border-slate-200 shadow-sm transition-all cursor-pointer disabled:opacity-50"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>Conta Google</span>
+            {isGoogleLoading ? (
+              <span className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+            )}
+            <span>Entrar com 1 clique via Google</span>
           </button>
-        </form>
 
-        {/* Footer switch */}
-        <div className="p-4 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-100 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400">
-          {mode === 'login' ? (
-            <span>
-              Ainda não tem conta?{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('register');
-                  setError(null);
-                }}
-                className="font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
-              >
-                Cadastre-se para solicitar acesso
-              </button>
-            </span>
-          ) : (
-            <span>
-              Já tem uma conta cadastrada?{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('login');
-                  setError(null);
-                }}
-                className="font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
-              >
-                Faça login
-              </button>
-            </span>
-          )}
+          <div className="flex items-center gap-3 my-2">
+            <div className="flex-1 h-px bg-slate-800" />
+            <span className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">ou com e-mail</span>
+            <div className="flex-1 h-px bg-slate-800" />
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-3.5">
+            {mode === "register" && (
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  Seu Nome ou Empresa
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Ex: Alex Rodrigues"
+                    className="w-full bg-[#0d0f12] border border-slate-700 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#fdd910]"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                E-mail
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="seuemail@empresa.com"
+                  required
+                  className="w-full bg-[#0d0f12] border border-slate-700 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#fdd910]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                Senha
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  required
+                  className="w-full bg-[#0d0f12] border border-slate-700 rounded-xl pl-9 pr-10 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#fdd910]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || isGoogleLoading}
+              className="w-full py-2.5 px-4 bg-[#fdd910] hover:bg-[#ffe30e] text-black rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-[#fdd910]/20 transition-all cursor-pointer disabled:opacity-50 mt-2"
+            >
+              {isLoading ? (
+                <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>{mode === "login" ? "Entrar na Plataforma" : "Cadastrar e Solicitar Acesso"}</span>
+                  <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Super Admin Tip */}
+          <div className="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-[#fdd910] shrink-0" />
+            <span>Super Administrador: o e-mail master é ativado com acesso vitalício ilimitado.</span>
+          </div>
         </div>
       </div>
     </div>

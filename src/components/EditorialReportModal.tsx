@@ -1,22 +1,19 @@
 import React from 'react';
-import { EditorialReportData, ThemeMode } from '../types';
-import { Award, X, Download, CheckCircle, ShieldCheck, Share2, Copy } from 'lucide-react';
+import { EditorialReportData } from '../types';
+import { Award, X, ShieldCheck, Copy, CheckCircle } from 'lucide-react';
 
 interface EditorialReportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  theme: ThemeMode;
   reportData: EditorialReportData;
 }
 
 export const EditorialReportModal: React.FC<EditorialReportModalProps> = ({
   isOpen,
   onClose,
-  theme,
   reportData,
 }) => {
   if (!isOpen) return null;
-  const isDark = theme === 'dark';
 
   const handleCopyMarkdown = () => {
     const md = `# 🏆 Certificado de Ganho de Informação & Ineditismo Editorial
@@ -47,15 +44,9 @@ ${reportData.fatos_novos.map((f, i) => `${i + 1}. **[${f.sujeito}]** ${f.predica
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div
-        className={`w-full max-w-3xl max-h-[92vh] flex flex-col rounded-3xl border shadow-2xl overflow-hidden transition-all ${
-          isDark
-            ? 'bg-slate-900 border-slate-800 text-slate-100'
-            : 'bg-white border-slate-200 text-slate-900'
-        }`}
-      >
+      <div className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-3xl border border-slate-200 bg-white text-slate-900 shadow-2xl overflow-hidden transition-all">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-emerald-500/10 via-transparent to-blue-500/10">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 bg-gradient-to-r from-emerald-500/10 via-transparent to-blue-500/10">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-2xl bg-emerald-500 text-white shadow-md shadow-emerald-500/20">
               <Award className="w-6 h-6" />
@@ -65,7 +56,7 @@ ${reportData.fatos_novos.map((f, i) => `${i + 1}. **[${f.sujeito}]** ${f.predica
                 Certificado Editorial de Information Gain
                 <ShieldCheck className="w-5 h-5 text-emerald-500" />
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-500">
                 Auditoria formal comprovando ineditismo sobre o consenso da web (Patente US 11,354,342 B2).
               </p>
             </div>
@@ -73,7 +64,7 @@ ${reportData.fatos_novos.map((f, i) => `${i + 1}. **[${f.sujeito}]** ${f.predica
 
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -82,20 +73,14 @@ ${reportData.fatos_novos.map((f, i) => `${i + 1}. **[${f.sujeito}]** ${f.predica
         {/* Certificate Card Content */}
         <div className="p-8 overflow-y-auto space-y-6 flex-1">
           {/* Badge Visual */}
-          <div
-            className={`p-6 rounded-2xl border text-center space-y-3 relative overflow-hidden ${
-              isDark
-                ? 'bg-slate-800/60 border-emerald-500/30'
-                : 'bg-emerald-50/50 border-emerald-200'
-            }`}
-          >
-            <span className="text-[11px] font-bold tracking-widest uppercase text-emerald-600 dark:text-emerald-400">
+          <div className="p-6 rounded-2xl border border-emerald-200 bg-emerald-50/50 text-center space-y-3 relative overflow-hidden">
+            <span className="text-[11px] font-bold tracking-widest uppercase text-emerald-600">
               Selo Oficial de Ineditismo de Conteúdo
             </span>
-            <div className="text-4xl font-black text-slate-900 dark:text-white">
+            <div className="text-4xl font-black text-slate-900">
               {reportData.score_geral >= 0.7 ? 'ALTO GANHO EDITORIAL' : 'GANHO INCREMENTAL APROVADO'}
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 max-w-lg mx-auto leading-relaxed">
+            <p className="text-xs text-slate-600 max-w-lg mx-auto leading-relaxed">
               Este conteúdo foi auditado contra o índice ontológico de consenso da web para o termo{' '}
               <strong>"{reportData.termo_principal}"</strong> e comprovadamente introduz novas proposições factuais.
             </p>
@@ -103,19 +88,19 @@ ${reportData.fatos_novos.map((f, i) => `${i + 1}. **[${f.sujeito}]** ${f.predica
             {/* Metrics Trio */}
             <div className="grid grid-cols-3 gap-3 pt-4 border-t border-emerald-500/20 max-w-md mx-auto">
               <div>
-                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                <div className="text-2xl font-bold text-emerald-600">
                   {reportData.taxa_conteudo_exclusivo}%
                 </div>
                 <div className="text-[10px] text-slate-500 uppercase font-medium">Ineditismo Líquido</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+                <div className="text-2xl font-bold text-slate-800">
                   {reportData.total_proposicoes_auditadas}
                 </div>
                 <div className="text-[10px] text-slate-500 uppercase font-medium">Fatos Auditados</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                <div className="text-2xl font-bold text-blue-600">
                   {reportData.score_geral.toFixed(2)}
                 </div>
                 <div className="text-[10px] text-slate-500 uppercase font-medium">Score / 1.00</div>
@@ -132,17 +117,15 @@ ${reportData.fatos_novos.map((f, i) => `${i + 1}. **[${f.sujeito}]** ${f.predica
               {reportData.fatos_novos.slice(0, 5).map((f, idx) => (
                 <div
                   key={idx}
-                  className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
-                    isDark ? 'bg-slate-800/30 border-slate-800' : 'bg-slate-50 border-slate-200'
-                  }`}
+                  className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-xs flex items-start gap-2.5"
                 >
                   <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                   <div>
-                    <div className="font-semibold text-slate-900 dark:text-slate-100">
+                    <div className="font-semibold text-slate-900">
                       [{f.sujeito}] {f.predicado} {f.objeto}
                     </div>
                     {f.trecho_origem && (
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 italic font-serif">
+                      <div className="text-[11px] text-slate-500 mt-1 italic font-serif">
                         "{f.trecho_origem}"
                       </div>
                     )}
@@ -154,17 +137,17 @@ ${reportData.fatos_novos.map((f, i) => `${i + 1}. **[${f.sujeito}]** ${f.predica
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
+        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+            className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-200 transition cursor-pointer"
           >
             Fechar
           </button>
 
           <button
             onClick={handleCopyMarkdown}
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition"
+            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition cursor-pointer"
           >
             <Copy className="w-4 h-4" />
             Copiar Laudo em Markdown para o Cliente

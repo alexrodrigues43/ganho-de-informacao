@@ -102,21 +102,29 @@ export interface SavedBaseline {
   autor_email?: string;
 }
 
-export type ThemeMode = 'dark' | 'light';
-
 export type UserRole = 'admin' | 'client';
 export type UserStatus = 'active' | 'pending' | 'blocked' | 'expired';
-export type UserPlan = 'trial' | 'monthly' | 'annual' | 'lifetime';
+export type SubscriptionPlan = 'trial' | 'specialist' | 'agency' | 'enterprise' | 'monthly' | 'annual' | 'lifetime';
+export type UserPlan = SubscriptionPlan;
+
+export type SupportedLang = 'pt' | 'en' | 'es';
 
 export interface UserProfile {
   uid: string;
   email: string;
   displayName?: string;
+  photoURL?: string;
   role: UserRole;
   status: UserStatus;
-  plan?: UserPlan;
+  plan?: SubscriptionPlan;
+  creditsBalance?: number;
+  creditsUsed?: number;
+  planExpiresAt?: string;
+  lastAppUsed?: string;
   expiresAt?: string | null;
   createdAt: string;
   notes?: string;
   auditsCount?: number;
+  usageCount?: number;
+  uiLang?: SupportedLang;
 }

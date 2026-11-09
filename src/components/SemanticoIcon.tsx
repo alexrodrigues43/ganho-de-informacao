@@ -2,12 +2,10 @@ import React from 'react';
 
 interface SemanticoIconProps {
   className?: string;
-  isDark?: boolean;
 }
 
 export const SemanticoIcon: React.FC<SemanticoIconProps> = ({
   className = 'w-full h-full',
-  isDark = false,
 }) => {
   // Canonical brand colors matching user's uploaded Favicon-Semantico-Novo.png:
   // Black stroke lines and circles, white node fills, and vibrant yellow top-left node.

@@ -1,34 +1,32 @@
 import React from 'react';
-import { ThemeMode } from '../types';
 import { CheckCheck, FileText, Code2, PlusCircle, Database } from 'lucide-react';
+import { SupportedLang } from '../types';
+import { getTranslations } from '../lib/i18n';
 
 interface ActionBarProps {
-  theme: ThemeMode;
   newFactsCount: number;
   totalConsolidatedCount: number;
   hasCommitted: boolean;
   onCommitFacts: () => void;
   onExportMarkdown: () => void;
   onExportJson: () => void;
+  uiLang?: SupportedLang;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
-  theme,
   newFactsCount,
   totalConsolidatedCount,
   hasCommitted,
   onCommitFacts,
   onExportMarkdown,
   onExportJson,
+  uiLang = 'pt',
 }) => {
-  const isDark = theme === 'dark';
-
+  const t = getTranslations(uiLang);
   return (
     <div
       id="action-bar-container"
-      className={`rounded-2xl border p-6 sm:p-7 flex flex-wrap items-center justify-between gap-4 transition-all ${
-        isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200/90 shadow-xs'
-      }`}
+      className="rounded-2xl border border-slate-200/90 bg-white shadow-xs p-6 sm:p-7 flex flex-wrap items-center justify-between gap-4 transition-all"
     >
       <div className="flex flex-wrap items-center gap-4">
         <button
@@ -36,35 +34,31 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           id="btn-commit-facts"
           onClick={onCommitFacts}
           disabled={hasCommitted || newFactsCount === 0}
-          className={`inline-flex items-center gap-2.5 px-6 py-3 font-bold text-xs rounded-full shadow-md transition-all active:scale-[0.98] cursor-pointer ${
+          className={`inline-flex items-center gap-2.5 px-6 py-3 min-h-[44px] font-bold text-xs rounded-full shadow-md transition-all active:scale-[0.98] cursor-pointer ${
             hasCommitted
-              ? isDark
-                ? 'bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700'
-                : 'bg-slate-100 text-slate-500 cursor-not-allowed border border-slate-200'
-              : isDark
-              ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/20'
+              ? 'bg-slate-100 text-slate-500 cursor-not-allowed border border-slate-200'
               : 'bg-slate-950 hover:bg-slate-800 text-white'
           }`}
         >
           {hasCommitted ? (
             <>
-              <CheckCheck className="w-4 h-4 text-emerald-500" />
-              <span>Fatos integrados com sucesso na ontologia</span>
+              <CheckCheck className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+              <span>{t.actionBar.btnCommitted}</span>
             </>
           ) : (
             <>
-              <PlusCircle className="w-4 h-4 text-amber-400 dark:text-slate-950" />
-              <span>Adicionar {newFactsCount} fatos novos à base conhecida</span>
+              <PlusCircle className="w-4 h-4 text-amber-400" aria-hidden="true" />
+              <span>{t.actionBar.btnCommit.replace('{count}', String(newFactsCount))}</span>
             </>
           )}
         </button>
 
-        <span className="text-xs text-slate-400 flex items-center gap-1.5 font-mono">
-          <Database className="w-3.5 h-3.5 text-slate-400" />
+        <span className="text-xs text-slate-500 flex items-center gap-1.5 font-mono">
+          <Database className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
           <span>
             {hasCommitted
-              ? `Base de conhecimento consolidada em ${totalConsolidatedCount} fatos.`
-              : `Eleva a base para ${totalConsolidatedCount} fatos após inclusão.`}
+              ? t.actionBar.statusCommitted.replace('{count}', String(totalConsolidatedCount))
+              : t.actionBar.statusElevates.replace('{count}', String(totalConsolidatedCount))}
           </span>
         </span>
       </div>
@@ -74,28 +68,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           type="button"
           id="btn-export-markdown"
           onClick={onExportMarkdown}
-          className={`px-4 py-2.5 border text-xs font-semibold rounded-full flex items-center gap-2 transition-all cursor-pointer ${
-            isDark
-              ? 'border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white'
-              : 'border-slate-300 hover:bg-slate-50 text-slate-700 hover:text-slate-950 shadow-2xs'
-          }`}
+          className="min-h-[44px] px-4 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 hover:text-slate-950 shadow-2xs text-xs font-semibold rounded-full flex items-center gap-2 transition-all cursor-pointer"
         >
-          <FileText className="w-3.5 h-3.5 text-slate-400" />
-          <span>Exportar Markdown</span>
+          <FileText className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+          <span>{t.actionBar.exportMarkdown}</span>
         </button>
 
         <button
           type="button"
           id="btn-export-json"
           onClick={onExportJson}
-          className={`px-4 py-2.5 border text-xs font-semibold rounded-full flex items-center gap-2 transition-all cursor-pointer ${
-            isDark
-              ? 'border-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white'
-              : 'border-slate-300 hover:bg-slate-50 text-slate-700 hover:text-slate-950 shadow-2xs'
-          }`}
+          className="min-h-[44px] px-4 py-2.5 border border-slate-300 hover:bg-slate-50 text-slate-700 hover:text-slate-950 shadow-2xs text-xs font-semibold rounded-full flex items-center gap-2 transition-all cursor-pointer"
         >
-          <Code2 className="w-3.5 h-3.5 text-slate-400" />
-          <span>Exportar JSON</span>
+          <Code2 className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+          <span>{t.actionBar.exportJson}</span>
         </button>
       </div>
     </div>

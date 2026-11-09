@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -11,6 +12,31 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gemini-2.5-flash';
+
+// In-Memory AI Generation Cache (24h TTL) isolated by language and parameters
+interface CachedAiResponse {
+  result: any;
+  timestamp: number;
+}
+const aiGenerationCache = new Map<string, CachedAiResponse>();
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function getLangInstruction(lang?: string): string {
+  const lower = (lang || 'pt').toLowerCase();
+  if (lower.startsWith('en')) {
+    return `LANGUAGE DIRECTIVE:
+- Generate all explanations, summaries, factual propositions, and justifications STRICTLY in ENGLISH.
+- Strictly adhere to Semantic SEO vocabulary: NEVER use the word "keyword" or "keywords". Use "terms", "search terms", "concepts", or "entities".`;
+  }
+  if (lower.startsWith('es')) {
+    return `DIRECTIVA DE IDIOMA:
+- Genere todas las explicaciones, resúmenes, proposiciones fácticas y justificaciones ESTRICTAMENTE en ESPAÑOL.
+- Adherencia estricta al vocabulario de SEO Semántico: NUNCA utilice el término "palabras clave" ni "palabra clave". Utilice exclusivamente "términos", "conceptos" o "entidades".`;
+  }
+  return `DIRETIVA DE IDIOMA:
+- Gere todas as explicações, resumos, proposições fáticas e justificativas ESTRITAMENTE em PORTUGUÊS DO BRASIL (PT-BR).
+- Aderência estrita ao vocabulário de SEO Semântico: NUNCA utilize o termo "palavra-chave" ou "palavras-chave". Utilize exclusivamente "termos", "conceitos" ou "entidades".`;
+}
 
 // Configuração segura do Helmet:
 // Desabilita COOP e CORP para permitir comunicação com o popup do Google Sign-In e avatares externos
@@ -87,19 +113,27 @@ Responda rigorosamente aderindo ao schema JSON solicitado, sem texto introdutór
 // Endpoint: Unified engine handling both "extrair_baseline" and "analisar_ganho"
 app.post('/api/engine', async (req, res) => {
   try {
-    const { acao, documento, fatos_conhecidos, novo_documento } = req.body;
+    const { acao, documento, fatos_conhecidos, novo_documento, language = 'pt' } = req.body;
 
     if (!acao) {
       return res.status(400).json({ error: 'Parâmetro "acao" é obrigatório ("extrair_baseline" ou "analisar_ganho").' });
     }
 
     const ai = getGenAI();
+    const targetLang = (language || 'pt').toLowerCase();
 
     // Mode 1: extrair_baseline
     if (acao === 'extrair_baseline') {
       const docText = documento || '';
       if (!docText.trim()) {
         return res.status(400).json({ error: 'Documento base vazio.' });
+      }
+
+      // Check SHA-256 cache
+      const cacheKey = 'baseline:' + crypto.createHash('sha256').update(`${targetLang}:${docText}`).digest('hex');
+      const cached = aiGenerationCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        return res.json({ ...cached.result, cached: true });
       }
 
       if (ai) {
@@ -130,7 +164,7 @@ Retorne um JSON estrito no seguinte formato:
           model: DEFAULT_MODEL,
           contents: prompt,
           config: {
-            systemInstruction: SYSTEM_PROMPT,
+            systemInstruction: `${SYSTEM_PROMPT}\n\n${getLangInstruction(targetLang)}`,
             responseMimeType: 'application/json',
             temperature: 0.2,
           },
@@ -138,6 +172,7 @@ Retorne um JSON estrito no seguinte formato:
 
         const rawText = response.text || '{}';
         const parsed = JSON.parse(rawText);
+        aiGenerationCache.set(cacheKey, { result: parsed, timestamp: Date.now() });
         return res.json(parsed);
       } else {
         // Heurística local determinística se IA não estiver configurada
@@ -169,6 +204,13 @@ Retorne um JSON estrito no seguinte formato:
 
       if (!candidateDoc.trim()) {
         return res.status(400).json({ error: 'Novo documento para análise está vazio.' });
+      }
+
+      // Check SHA-256 cache
+      const cacheKey = 'gain:' + crypto.createHash('sha256').update(`${targetLang}:${candidateDoc}:${JSON.stringify(knownFacts.slice(0, 30))}`).digest('hex');
+      const cached = aiGenerationCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        return res.json({ ...cached.result, cached: true });
       }
 
       if (ai) {
@@ -205,7 +247,7 @@ Retorne estritamente um JSON válido conforme o schema.`;
           model: DEFAULT_MODEL,
           contents: prompt,
           config: {
-            systemInstruction: SYSTEM_PROMPT,
+            systemInstruction: `${SYSTEM_PROMPT}\n\n${getLangInstruction(targetLang)}`,
             responseMimeType: 'application/json',
             temperature: 0.2,
           },
@@ -214,6 +256,7 @@ Retorne estritamente um JSON válido conforme o schema.`;
         const rawText = response.text || '{}';
         const parsed = JSON.parse(rawText);
         parsed.acao = 'analisar_ganho';
+        aiGenerationCache.set(cacheKey, { result: parsed, timestamp: Date.now() });
         return res.json(parsed);
       } else {
         return res.json({

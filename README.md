@@ -234,6 +234,20 @@ O projeto inclui o arquivo `firestore.rules` pré-configurado:
 
 ---
 
+## 🌍 Internacionalização Profunda (i18n) & Padrão de Duplo Controle
+
+O Analisador de Ganho de Informação possui suporte trilíngue nativo (**Português `pt`, Inglês `en` e Espanhol `es`**):
+
+1. **Duplo Controle de Idioma:**
+   - **`uiLang` (Interface):** Seletor acessível WCAG 2.2 AA no cabeçalho. Traduz botões, menus, modais, tabela de fatos atômicos S-P-O, badges e síntese executiva.
+   - **`contentLang` (Conteúdo/Análise):** Define a base de stopwords, tokenização e prompts analíticos do Gemini para extração de proposições no idioma correto.
+2. **Navegação Institucional Dinâmica (`NAV_URLS`):**
+   - Links institucionais no cabeçalho e rodapé direcionam para as versões correspondentes no portal `semantico.com.br`.
+3. **Vocabulário Ontológico Estrito:**
+   - Proibição absoluta de "palavra-chave" / "keyword". Emprego exclusivo de *Entidades*, *Conceitos* e *Termos*.
+
+---
+
 ## 📄 Licença & Reconhecimentos
 
 - Desenvolvido para fins analíticos, educacionais e auditoria semântica.

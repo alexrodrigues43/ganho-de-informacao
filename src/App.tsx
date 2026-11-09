@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   AtomicFact,
   GainAnalysisResponse,
-  ThemeMode,
   UserProfile,
   FluffItem,
   InformationGap,
   EditorialReportData,
+  SupportedLang,
 } from './types';
 import {
   DEFAULT_BASELINE_DOC,
@@ -33,6 +33,7 @@ import { WriterStudio } from './components/WriterStudio';
 import { FluffCutterModal } from './components/FluffCutterModal';
 import { ReferenceTermsModal } from './components/ReferenceTermsModal';
 import { EditorialReportModal } from './components/EditorialReportModal';
+import { getInitialUiLang, saveStoredUiLang, getTranslations } from './lib/i18n';
 import {
   analyzeDocumentGainLocally,
   extractBaselineLocally,
@@ -46,13 +47,18 @@ import {
   logoutUser,
   testFirestoreConnection,
   recordUserAudit,
+  deductCredits,
+  updateUserUiLang,
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { CheckCircle2, Sparkles, Layers, Lock, ArrowRight, PenTool } from 'lucide-react';
+import { CheckCircle2, Sparkles, Layers, Lock, ArrowRight, PenTool, Globe } from 'lucide-react';
 
 export default function App() {
-  // Default to light theme matching the Graph Studio Semântico reference page
-  const [theme, setTheme] = useState<ThemeMode>('light');
+  // Dual-control i18n
+  const [uiLang, setUiLang] = useState<SupportedLang>(() => getInitialUiLang());
+  const [contentLang, setContentLang] = useState<SupportedLang>(() => getInitialUiLang());
+  const t = getTranslations(uiLang);
+
   const [baselineText, setBaselineText] = useState(DEFAULT_BASELINE_DOC);
   const [knownFacts, setKnownFacts] = useState<AtomicFact[]>(DEFAULT_KNOWN_FACTS);
   const [candidateText, setCandidateText] = useState(DEFAULT_CANDIDATE_DOC);
@@ -65,6 +71,22 @@ export default function App() {
 
   // Authentication & Access Control State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+
+  // Sincronização de uiLang com perfil centralizado
+  useEffect(() => {
+    if (currentUser?.uiLang && ['pt', 'en', 'es'].includes(currentUser.uiLang)) {
+      setUiLang(currentUser.uiLang);
+      saveStoredUiLang(currentUser.uiLang);
+    }
+  }, [currentUser?.uiLang]);
+
+  const handleLanguageChange = useCallback((newLang: SupportedLang) => {
+    setUiLang(newLang);
+    saveStoredUiLang(newLang);
+    if (currentUser?.uid) {
+      updateUserUiLang(currentUser.uid, newLang);
+    }
+  }, [currentUser?.uid]);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [authReason, setAuthReason] = useState<string | undefined>(undefined);
@@ -123,14 +145,10 @@ export default function App() {
     };
   }, []);
 
-  // Sincroniza a classe .dark no elemento raiz HTML para evitar conflito com prefers-color-scheme
+  // Garante interface sempre em modo claro sem classe dark residual
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [theme]);
+    document.documentElement.classList.remove('dark');
+  }, []);
 
   const hasActiveAccess = currentUser?.status === 'active' || currentUser?.role === 'admin';
 
@@ -139,11 +157,6 @@ export default function App() {
     setTimeout(() => {
       setToast(null);
     }, 3500);
-  };
-
-  const handleToggleTheme = (mode: ThemeMode) => {
-    setTheme(mode);
-    showToast(`Alternado para o modo ${mode === 'dark' ? 'Escuro [Black Edition]' : 'Claro [Semântico Studio]'}.`);
   };
 
   const scrollToSection = (id: string) => {
@@ -174,11 +187,24 @@ export default function App() {
       return;
     }
 
-    // Access check
-    if (!hasActiveAccess) {
-      setAuthReason('A extração de novos fatos atômicos é exclusiva para assinantes com licença ativa.');
+    // Access & Credits check
+    if (!currentUser) {
+      setAuthReason('Para extrair proposições atômicas, faça login ou cadastre-se para receber 10 créditos de cortesia.');
       setIsRestrictedModalOpen(true);
       return;
+    }
+
+    if (currentUser.role !== 'admin') {
+      if (currentUser.status !== 'active') {
+        setAuthReason('Sua conta está aguardando liberação ou está pausada.');
+        setIsRestrictedModalOpen(true);
+        return;
+      }
+      if ((currentUser.creditsBalance ?? 0) < 1) {
+        setAuthReason('A extração de fatos requer 1 crédito, mas o saldo da sua carteira é de 0 créditos.');
+        setIsRestrictedModalOpen(true);
+        return;
+      }
     }
 
     setIsExtracting(true);
@@ -191,6 +217,7 @@ export default function App() {
         body: JSON.stringify({
           acao: 'extrair_baseline',
           documento: baselineText,
+          language: contentLang,
         }),
       });
 
@@ -199,7 +226,10 @@ export default function App() {
         setKnownFacts(data.fatos);
         setHasCommitted(false);
         showToast(`${data.fatos.length} fatos atômicos validados e extraídos para o baseline.`);
-        if (currentUser?.uid) recordUserAudit(currentUser.uid);
+        if (currentUser?.uid) {
+          recordUserAudit(currentUser.uid);
+          deductCredits(currentUser.uid, 1, 'Extração de Baseline (Fatos Atômicos)', currentUser.email);
+        }
       } else {
         throw new Error(data.error || 'Falha na extração dos fatos');
       }
@@ -208,7 +238,10 @@ export default function App() {
       const generatedFacts = extractBaselineLocally(baselineText);
       setKnownFacts(generatedFacts);
       showToast(`${generatedFacts.length} fatos atômicos extraídos para o baseline.`);
-      if (currentUser?.uid) recordUserAudit(currentUser.uid);
+      if (currentUser?.uid) {
+        recordUserAudit(currentUser.uid);
+        deductCredits(currentUser.uid, 1, 'Extração de Baseline (Fatos Atômicos)', currentUser.email);
+      }
     } finally {
       setIsExtracting(false);
     }
@@ -220,11 +253,24 @@ export default function App() {
       return;
     }
 
-    // Access check
-    if (!hasActiveAccess) {
-      setAuthReason('O cálculo de Ganho Marginal de Informação e anotação semântica requer assinatura ativa.');
+    // Access & Credits check
+    if (!currentUser) {
+      setAuthReason('Para calcular o Ganho de Informação, faça login ou cadastre-se para receber 10 créditos de cortesia.');
       setIsRestrictedModalOpen(true);
       return;
+    }
+
+    if (currentUser.role !== 'admin') {
+      if (currentUser.status !== 'active') {
+        setAuthReason('Sua conta está aguardando liberação ou está pausada.');
+        setIsRestrictedModalOpen(true);
+        return;
+      }
+      if ((currentUser.creditsBalance ?? 0) < 1) {
+        setAuthReason('A análise de ganho requer 1 crédito, mas o saldo da sua carteira é de 0 créditos.');
+        setIsRestrictedModalOpen(true);
+        return;
+      }
     }
 
     setIsAnalyzing(true);
@@ -238,11 +284,15 @@ export default function App() {
           acao: 'analisar_ganho',
           fatos_conhecidos: knownFacts,
           novo_documento: candidateText,
+          language: contentLang,
         }),
       });
 
       const data = await res.json();
       if (data.score_geral !== undefined && data.fatos_analisados) {
+        if (currentUser?.uid) {
+          deductCredits(currentUser.uid, 1, 'Cálculo de Ganho Marginal de Informação', currentUser.email);
+        }
         const newResult: GainAnalysisResponse = {
           acao: 'analisar_ganho',
           score_geral: data.score_geral,
@@ -374,12 +424,12 @@ export default function App() {
 
     setKnownFacts([...knownFacts, ...toAdd]);
     setHasCommitted(true);
-    showToast(`${toAdd.length} proposições novas consolidadas na base de conhecimento!`);
+    showToast(t.toasts.factsCommitted);
   };
 
   const handleExportMarkdown = () => {
     const md = `# Relatório de Auditoria de Information Gain
-**Data:** ${new Date().toLocaleDateString('pt-BR')}  
+**Data:** ${new Date().toLocaleDateString(uiLang === 'en' ? 'en-US' : uiLang === 'es' ? 'es-ES' : 'pt-BR')}  
 **Termo Principal:** ${currentTermo}  
 **Patente de Referência:** US 11,354,342 B2 (Contextual Information Gain Estimation)  
 **Status do Sistema:** Calibrado | Espaço Vetorial FTS-v4  
@@ -420,7 +470,7 @@ ${analysisResult.fatos_analisados
     link.download = `information-gain-audit-${Date.now()}.md`;
     link.click();
     URL.revokeObjectURL(url);
-    showToast('Relatório de Information Gain compilado em Markdown.');
+    showToast(t.toasts.exportMdSuccess);
   };
 
   const handleExportJson = () => {
@@ -453,7 +503,7 @@ ${analysisResult.fatos_analisados
     link.download = `atomic-facts-gain-analysis-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    showToast('Fatos atômicos e scores exportados em JSON.');
+    showToast(t.toasts.exportJsonSuccess);
   };
 
   const handleResetSession = () => {
@@ -465,7 +515,7 @@ ${analysisResult.fatos_analisados
     setCurrentTermo('Grafos de Conhecimento e SEO');
     setFluffItems(detectFluffSegmentsLocally(DEFAULT_ANALYSIS_RESULT.fatos_analisados));
     setInformationGaps(findInformationGapsLocally(DEFAULT_CANDIDATE_DOC, DEFAULT_KNOWN_FACTS));
-    showToast('Sessão redefinida para os parâmetros padrão de benchmark.');
+    showToast(t.toasts.sessionReset);
   };
 
   const handleResetAll = () => {
@@ -482,7 +532,7 @@ ${analysisResult.fatos_analisados
       fatos_incrementais_pct: 0,
       fatos_redundantes_count: 0,
       fatos_redundantes_pct: 0,
-      sintese_analitica: 'Nenhum documento auditado no momento. Insira um texto base e um novo documento para calcular o ganho.',
+      sintese_analitica: uiLang === 'en' ? 'No document audited yet. Insert a baseline corpus and candidate text to calculate gain.' : uiLang === 'es' ? 'Ningún documento auditado por ahora. Inserte un texto base y un nuevo documento para calcular ganancia.' : 'Nenhum documento auditado no momento. Insira um texto base e um novo documento para calcular o ganho.',
       html_anotado: '',
       fatos_analisados: [],
     });
@@ -490,18 +540,18 @@ ${analysisResult.fatos_analisados
     setSelectedFact(null);
     setFluffItems([]);
     setInformationGaps([]);
-    showToast('Todos os campos e relatórios foram limpos.');
+    showToast(t.toasts.allReset);
   };
 
   const handleClearBaseline = () => {
     setBaselineText('');
     setKnownFacts([]);
-    showToast('Base de conhecimento limpa.');
+    showToast(uiLang === 'en' ? 'Knowledge baseline cleared.' : uiLang === 'es' ? 'Línea base de conocimiento limpiada.' : 'Base de conhecimento limpa.');
   };
 
   const handleClearCandidate = () => {
     setCandidateText('');
-    showToast('Texto do novo documento limpo.');
+    showToast(uiLang === 'en' ? 'Candidate document text cleared.' : uiLang === 'es' ? 'Texto del documento candidato limpiado.' : 'Texto do novo documento limpo.');
   };
 
   const handleFileUpload = (file: File) => {
@@ -516,7 +566,6 @@ ${analysisResult.fatos_analisados
     reader.readAsText(file);
   };
 
-  const isDark = theme === 'dark';
   const newFactsCount = analysisResult.fatos_analisados.filter(
     (f) => f.classificacao === 'NOVO'
   ).length;
@@ -539,40 +588,84 @@ ${analysisResult.fatos_analisados
   };
 
   return (
-    <div
-      className={`min-h-screen flex flex-col font-sans transition-colors ${
-        isDark ? 'bg-graph-grid-dark text-slate-100' : 'bg-graph-grid-light text-slate-900'
-      }`}
-    >
+    <div className="min-h-screen flex flex-col font-sans bg-graph-grid-light text-slate-900">
+      {/* Skip link for keyboard accessibility (WCAG 2.2 AA) */}
+      <a
+        href="#main-content"
+        className="skip-link sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-slate-950 focus:text-white focus:rounded-lg focus:shadow-xl focus:font-bold"
+      >
+        {uiLang === 'en' ? 'Skip to main content' : uiLang === 'es' ? 'Saltar al contenido principal' : 'Pular para o conteúdo principal'}
+      </a>
+
       {/* 1. Header Navigation matching Graph Studio */}
       <Header
-        theme={theme}
-        onToggleTheme={handleToggleTheme}
         knownFactsCount={knownFacts.length}
         onResetSession={handleResetSession}
         onResetAll={handleResetAll}
         currentUser={currentUser}
         onOpenAuth={(mode) => handleOpenAuth(mode)}
         onOpenAdmin={() => setIsAdminPanelOpen(true)}
+        onOpenPaywall={() => {
+          setAuthReason(undefined);
+          setIsRestrictedModalOpen(true);
+        }}
         onLogout={handleLogout}
+        uiLang={uiLang}
+        onLanguageChange={handleLanguageChange}
       />
 
-      {/* 2. Hero Section */}
-      <HeroSection
-        theme={theme}
-        onAuditClick={() => scrollToSection('workspace')}
-        onExploreKnowledgeBase={() => scrollToSection('card-baseline-knowledge')}
-      />
+      <main id="main-content" role="main" tabIndex={-1} className="flex-1 focus:outline-none">
+        {/* 2. Hero Section */}
+        <HeroSection
+          onAuditClick={() => scrollToSection('workspace')}
+          onExploreKnowledgeBase={() => scrollToSection('card-baseline-knowledge')}
+          uiLang={uiLang}
+        />
 
-      {/* 3. Central Visual Graph Canvas */}
-      <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 mb-12">
+        {/* Project Content Language Selector */}
+        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Globe className="w-4 h-4 text-emerald-700" aria-hidden="true" />
+              <div>
+                <span className="text-xs font-bold text-slate-900">{t.projectLanguage.label}</span>
+                <p className="text-[11px] text-slate-500">{t.projectLanguage.hint}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5" role="group" aria-label={t.projectLanguage.label}>
+              {[
+                { id: 'pt' as const, label: t.projectLanguage.pt, flag: '🇧🇷' },
+                { id: 'en' as const, label: t.projectLanguage.en, flag: '🇺🇸' },
+                { id: 'es' as const, label: t.projectLanguage.es, flag: '🇪🇸' },
+              ].map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => setContentLang(l.id)}
+                  aria-pressed={contentLang === l.id}
+                  className={`min-h-[44px] min-w-[44px] px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    contentLang === l.id
+                      ? 'bg-slate-950 text-white shadow-2xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <span aria-hidden="true">{l.flag}</span>
+                  <span>{l.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Central Visual Graph Canvas */}
+        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 mb-12">
         <GraphCanvas
-          theme={theme}
           facts={analysisResult.fatos_analisados}
           newFactsCount={analysisResult.fatos_novos_count}
           incrementalFactsCount={analysisResult.fatos_incrementais_count}
           redundantFactsCount={analysisResult.fatos_redundantes_count}
           onSelectFact={(f) => setSelectedFact(f)}
+          uiLang={uiLang}
         />
       </div>
 
@@ -582,10 +675,10 @@ ${analysisResult.fatos_analisados
         <div className="max-w-4xl mx-auto mb-12">
           <div className="text-center mb-4">
             <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 font-mono">
-              Ambiente Operacional
+              {uiLang === 'en' ? 'Operating Environment' : uiLang === 'es' ? 'Ambiente Operativo' : 'Ambiente Operacional'}
             </span>
-            <h3 className={`text-base font-semibold mt-0.5 ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-              Selecione o seu Modo de Trabalho
+            <h3 className="text-base font-semibold mt-0.5 text-slate-800">
+              {uiLang === 'en' ? 'Select Your Workspace Mode' : uiLang === 'es' ? 'Seleccione su Modo de Trabajo' : 'Selecione o seu Modo de Trabalho'}
             </h3>
           </div>
 
@@ -594,13 +687,9 @@ ${analysisResult.fatos_analisados
             <button
               type="button"
               onClick={() => setActiveViewMode('analyzer')}
-              className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden cursor-pointer group flex flex-col justify-between ${
+              className={`min-h-[44px] p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden cursor-pointer group flex flex-col justify-between ${
                 activeViewMode === 'analyzer'
-                  ? isDark
-                    ? 'bg-amber-950/20 border-amber-500 shadow-xl shadow-amber-500/10 ring-2 ring-amber-500/30'
-                    : 'bg-amber-50/80 border-amber-500 shadow-lg shadow-amber-500/15 ring-2 ring-amber-400/40'
-                  : isDark
-                  ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700 opacity-75 hover:opacity-100'
+                  ? 'bg-amber-50/80 border-amber-500 shadow-lg shadow-amber-500/15 ring-2 ring-amber-400/40'
                   : 'bg-white border-slate-200 hover:border-slate-300 opacity-75 hover:opacity-100'
               }`}
             >
@@ -609,33 +698,35 @@ ${analysisResult.fatos_analisados
                   className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all shadow-md ${
                     activeViewMode === 'analyzer'
                       ? 'bg-amber-500 text-slate-950 shadow-amber-500/30 scale-105'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      : 'bg-slate-200 text-slate-600'
                   }`}
                 >
-                  <Layers className="w-6 h-6" />
+                  <Layers className="w-6 h-6" aria-hidden="true" />
                 </div>
 
                 {activeViewMode === 'analyzer' ? (
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500 text-slate-950 font-mono shadow-xs">
-                    ✓ Modo Ativo
+                    {uiLang === 'en' ? '✓ Active Mode' : uiLang === 'es' ? '✓ Modo Activo' : '✓ Modo Ativo'}
                   </span>
                 ) : (
-                  <span className="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition">
-                    Clique para Ativar
+                  <span className="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 transition">
+                    {uiLang === 'en' ? 'Click to Activate' : uiLang === 'es' ? 'Clic para Activar' : 'Clique para Ativar'}
                   </span>
                 )}
               </div>
 
               <div>
                 <h4 className={`text-base font-bold flex items-center gap-2 ${
-                  activeViewMode === 'analyzer'
-                    ? isDark ? 'text-amber-300' : 'text-amber-950'
-                    : isDark ? 'text-white' : 'text-slate-900'
+                  activeViewMode === 'analyzer' ? 'text-amber-950' : 'text-slate-900'
                 }`}>
-                  Analisador Ontológico
+                  {t.workspace.modeClassic}
                 </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                  Decomposição em fatos atômicos S-P-O, grafos de entidades e matriz comparativa da patente US 11,354,342 B2.
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {uiLang === 'en'
+                    ? 'Decomposition into S-P-O atomic facts, entity graphs, and patent US 11,354,342 B2 comparative matrix.'
+                    : uiLang === 'es'
+                    ? 'Descomposición en hechos atómicos S-P-O, grafos de entidades y matriz de patente US 11,354,342 B2.'
+                    : 'Decomposição em fatos atômicos S-P-O, grafos de entidades e matriz comparativa da patente US 11,354,342 B2.'}
                 </p>
               </div>
             </button>
@@ -644,13 +735,9 @@ ${analysisResult.fatos_analisados
             <button
               type="button"
               onClick={() => setActiveViewMode('writer')}
-              className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden cursor-pointer group flex flex-col justify-between ${
+              className={`min-h-[44px] p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden cursor-pointer group flex flex-col justify-between ${
                 activeViewMode === 'writer'
-                  ? isDark
-                    ? 'bg-emerald-950/20 border-emerald-500 shadow-xl shadow-emerald-500/10 ring-2 ring-emerald-500/30'
-                    : 'bg-emerald-50/80 border-emerald-500 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/40'
-                  : isDark
-                  ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700 opacity-75 hover:opacity-100'
+                  ? 'bg-emerald-50/80 border-emerald-500 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/40'
                   : 'bg-white border-slate-200 hover:border-slate-300 opacity-75 hover:opacity-100'
               }`}
             >
@@ -659,23 +746,23 @@ ${analysisResult.fatos_analisados
                   className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold transition-all shadow-md ${
                     activeViewMode === 'writer'
                       ? 'bg-emerald-600 text-white shadow-emerald-600/30 scale-105'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      : 'bg-slate-200 text-slate-600'
                   }`}
                 >
-                  <PenTool className="w-6 h-6" />
+                  <PenTool className="w-6 h-6" aria-hidden="true" />
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono">
-                    NOVO
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 font-mono">
+                    {uiLang === 'en' ? 'NEW' : uiLang === 'es' ? 'NUEVO' : 'NOVO'}
                   </span>
                   {activeViewMode === 'writer' ? (
                     <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-600 text-white font-mono shadow-xs">
-                      ✓ Modo Ativo
+                      {uiLang === 'en' ? '✓ Active Mode' : uiLang === 'es' ? '✓ Modo Activo' : '✓ Modo Ativo'}
                     </span>
                   ) : (
-                    <span className="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition">
-                      Clique para Ativar
+                    <span className="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 transition">
+                      {uiLang === 'en' ? 'Click to Activate' : uiLang === 'es' ? 'Clic para Activar' : 'Clique para Ativar'}
                     </span>
                   )}
                 </div>
@@ -683,14 +770,16 @@ ${analysisResult.fatos_analisados
 
               <div>
                 <h4 className={`text-base font-bold flex items-center gap-2 ${
-                  activeViewMode === 'writer'
-                    ? isDark ? 'text-emerald-300' : 'text-emerald-950'
-                    : isDark ? 'text-white' : 'text-slate-900'
+                  activeViewMode === 'writer' ? 'text-emerald-950' : 'text-slate-900'
                 }`}>
-                  Estúdio do Redator
+                  {t.workspace.modeWriter}
                 </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                  Guia em tempo real, detector de redundâncias (fluff), buscador de lacunas e elevação de proposições.
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {uiLang === 'en'
+                    ? 'Real-time guidance, fluff detector, content gap finder, and proposition elevation.'
+                    : uiLang === 'es'
+                    ? 'Guía en tiempo real, detector de relleno (fluff), buscador de brechas y elevación de hechos.'
+                    : 'Guia em tempo real, detector de redundâncias (fluff), buscador de lacunas e elevação de proposições.'}
                 </p>
               </div>
             </button>
@@ -699,32 +788,32 @@ ${analysisResult.fatos_analisados
 
         {/* Access Banner (Shows if user is unauthenticated or not active) */}
         {!hasActiveAccess && (
-          <div className="mb-8 p-4 sm:p-5 rounded-3xl bg-amber-500/10 border border-amber-400/40 dark:border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="mb-8 p-4 sm:p-5 rounded-3xl bg-amber-500/10 border border-amber-400/40 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div className="h-11 w-11 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold shrink-0 shadow-xs">
-                <Lock className="w-5 h-5" />
+                <Lock className="w-5 h-5" aria-hidden="true" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <span>
                     {!currentUser
-                      ? 'Área Restrita para Assinantes Licenciados'
+                      ? t.workspace.lockTitle
                       : currentUser.status === 'pending'
-                      ? 'Cadastro em Análise — Aguardando Ativação'
-                      : 'Assinatura Inativa ou Pausada'}
+                      ? (uiLang === 'en' ? 'Account Under Review — Pending Activation' : uiLang === 'es' ? 'Registro en Revisión — Pendiente de Activación' : 'Cadastro em Análise — Aguardando Ativação')
+                      : (uiLang === 'en' ? 'Inactive or Paused Subscription' : uiLang === 'es' ? 'Suscripción Inactiva o Pausada' : 'Assinatura Inativa ou Pausada')}
                   </span>
                   {currentUser && (
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-300 font-bold">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold">
                       {currentUser.status.toUpperCase()}
                     </span>
                   )}
                 </h4>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-600 mt-0.5">
                   {!currentUser
-                    ? 'Faça login ou cadastre-se para auditar textos personalizados e salvar novos fatos atômicos.'
+                    ? t.workspace.lockDescGuest
                     : currentUser.status === 'pending'
-                    ? 'Seu cadastro foi salvo. Fale com Alexandre para liberação imediata do seu acesso.'
-                    : 'Entre em contato para renovar seu plano de acesso ao Auditor S-P-O.'}
+                    ? t.workspace.lockDescPending
+                    : t.workspace.lockDescExpired}
                 </p>
               </div>
             </div>
@@ -735,27 +824,27 @@ ${analysisResult.fatos_analisados
                   <button
                     type="button"
                     onClick={() => handleOpenAuth('login')}
-                    className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 text-xs font-bold transition-colors cursor-pointer"
+                    className="flex-1 sm:flex-initial min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-white text-xs font-bold transition-colors cursor-pointer"
                   >
-                    Fazer Login
+                    {t.workspace.btnLogin}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleOpenAuth('register')}
-                    className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                    className="flex-1 sm:flex-initial min-h-[44px] px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-xs transition-colors cursor-pointer"
                   >
-                    Solicitar Acesso
+                    {t.workspace.btnRequestAccess}
                   </button>
                 </>
               ) : (
                 <a
-                  href="https://semantico.com.br/contato.html"
+                  href={t.navLinks.contact}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <span>Liberar com Alexandre</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span>{t.workspace.btnContactAlexandre}</span>
+                  <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
                 </a>
               )}
             </div>
@@ -765,7 +854,6 @@ ${analysisResult.fatos_analisados
         {/* MODO 1: ESTÚDIO DO REDATOR */}
         {activeViewMode === 'writer' ? (
           <WriterStudio
-            theme={theme}
             candidateText={candidateText}
             onUpdateCandidateText={setCandidateText}
             knownFacts={knownFacts}
@@ -780,25 +868,21 @@ ${analysisResult.fatos_analisados
             isLoadingGaps={isLoadingGaps}
             onRefreshGaps={handleRefreshGaps}
             currentTermo={currentTermo}
+            uiLang={uiLang}
           />
         ) : (
           /* MODO 2: ANALISADOR ONTOLÓGICO CLÁSSICO */
           <div>
             {/* Workspace Title & Description */}
             <div className="text-center max-w-2xl mx-auto mb-10">
-              <span className="text-xs font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 font-mono">
-                Estação de Trabalho Analítica
+              <span className="text-xs font-bold uppercase tracking-widest text-amber-600 font-mono">
+                {t.workspace.badge}
               </span>
-              <h2
-                className={`font-serif text-3xl sm:text-4xl font-medium tracking-tight mt-2 mb-3 ${
-                  isDark ? 'text-white' : 'text-slate-950'
-                }`}
-              >
-                Auditor de Fatos Atômicos & Information Gain
+              <h2 className="font-serif text-3xl sm:text-4xl font-medium tracking-tight mt-2 mb-3 text-slate-950">
+                {t.workspace.title}
               </h2>
-              <p className={`text-sm sm:text-base ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                Insira ou carregue seu corpus base à esquerda e analise o documento candidato à direita para
-                calcular o ganho marginal de informação.
+              <p className="text-sm sm:text-base text-slate-600">
+                {t.workspace.subtitle}
               </p>
             </div>
 
@@ -806,7 +890,6 @@ ${analysisResult.fatos_analisados
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start mb-12">
               {/* Card 1: Base de Conhecimento */}
               <BaselineCard
-                theme={theme}
                 baselineText={baselineText}
                 knownFacts={knownFacts}
                 isExtracting={isExtracting}
@@ -814,16 +897,18 @@ ${analysisResult.fatos_analisados
                 onExtractBaseline={handleExtractBaseline}
                 onClear={handleClearBaseline}
                 onFileUpload={handleFileUpload}
+                uiLang={uiLang}
               />
 
               {/* Card 2: Novo Documento */}
               <CandidateCard
-                theme={theme}
                 candidateText={candidateText}
                 isAnalyzing={isAnalyzing}
                 onTextChange={setCandidateText}
                 onAnalyze={handleAnalyzeGain}
                 onClear={handleClearCandidate}
+                onResetAll={handleResetAll}
+                uiLang={uiLang}
               />
             </div>
 
@@ -831,7 +916,6 @@ ${analysisResult.fatos_analisados
             <div id="diagnostico-metricas" className="space-y-12">
               {/* Balanço Comparativo */}
               <ComparisonBalance
-                theme={theme}
                 baselineFactsCount={knownFacts.length}
                 candidateTextLength={candidateText.length}
                 candidateWordCount={candidateText.trim().split(/\s+/).filter(Boolean).length}
@@ -845,11 +929,11 @@ ${analysisResult.fatos_analisados
                   fatos_redundantes_count: analysisResult.fatos_redundantes_count,
                   fatos_redundantes_pct: analysisResult.fatos_redundantes_pct,
                 }}
+                uiLang={uiLang}
               />
 
               {/* 3 Metric Summary Cards */}
               <MetricsCards
-                theme={theme}
                 metrics={analysisResult}
                 scoreGeral={analysisResult.score_geral}
                 classificacaoGeral={analysisResult.classificacao_geral}
@@ -859,34 +943,35 @@ ${analysisResult.fatos_analisados
                 fatosIncrementaisCount={analysisResult.fatos_incrementais_count}
                 fatosRedundantesPct={analysisResult.fatos_redundantes_pct}
                 fatosRedundantesCount={analysisResult.fatos_redundantes_count}
+                uiLang={uiLang}
               />
 
               {/* Síntese Analítica */}
               <SynthesisCard
-                theme={theme}
                 synthesis={analysisResult.sintese_analitica}
                 sintese={analysisResult.sintese_analitica}
                 classificacaoGeral={analysisResult.classificacao_geral}
                 scoreGeral={analysisResult.score_geral}
+                uiLang={uiLang}
               />
 
               {/* Visualizador de Resultados (Highlighting e Tabela) */}
               <ResultsViewer
-                theme={theme}
                 annotatedHtml={analysisResult.html_anotado}
                 facts={analysisResult.fatos_analisados}
                 onSelectFact={(f) => setSelectedFact(f)}
+                uiLang={uiLang}
               />
 
               {/* Action Bar for Commit and Exports */}
               <ActionBar
-                theme={theme}
                 newFactsCount={newFactsCount}
                 totalConsolidatedCount={totalConsolidatedCount}
                 hasCommitted={hasCommitted}
                 onCommitFacts={handleCommitNewFacts}
                 onExportMarkdown={handleExportMarkdown}
                 onExportJson={handleExportJson}
+                uiLang={uiLang}
               />
             </div>
           </div>
@@ -895,15 +980,16 @@ ${analysisResult.fatos_analisados
 
       {/* 5. Editorial Explanatory Sections */}
       <EditorialSections
-        theme={theme}
         onStartAudit={() => scrollToSection('workspace')}
+        uiLang={uiLang}
       />
+      </main>
 
       {/* Modais da Aplicação */}
       <FactDetailModal
         fact={selectedFact}
         onClose={() => setSelectedFact(null)}
-        theme={theme}
+        uiLang={uiLang}
       />
 
       <AuthModal
@@ -933,13 +1019,13 @@ ${analysisResult.fatos_analisados
         onClose={() => setIsRestrictedModalOpen(false)}
         currentUser={currentUser}
         onOpenAuth={(mode) => handleOpenAuth(mode, authReason)}
+        reason={authReason}
       />
 
       {/* Novos Modais Especializados para Redatores */}
       <FluffCutterModal
         isOpen={isFluffCutterOpen}
         onClose={() => setIsFluffCutterOpen(false)}
-        theme={theme}
         items={fluffItems}
         onApplySynthesis={handleApplySynthesis}
       />
@@ -947,14 +1033,12 @@ ${analysisResult.fatos_analisados
       <ReferenceTermsModal
         isOpen={isTermsBuilderOpen}
         onClose={() => setIsTermsBuilderOpen(false)}
-        theme={theme}
         onBaselineGenerated={handleBaselineGeneratedFromTerms}
       />
 
       <EditorialReportModal
         isOpen={isEditorialReportOpen}
         onClose={() => setIsEditorialReportOpen(false)}
-        theme={theme}
         reportData={editorialReportData}
       />
 

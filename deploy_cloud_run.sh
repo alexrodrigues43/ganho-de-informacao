@@ -42,10 +42,16 @@ if [ -n "$API_KEY" ]; then
 fi
 
 # 2. Deploy do container via Cloud Build
+IMAGE_TAG="us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$SERVICE_NAME:latest"
+
 echo ""
-echo "🔨 Compilando container com Cloud Build e provisionando no Cloud Run..."
+echo "📦 1. Compilando container com Cloud Build..."
+gcloud builds submit --tag "$IMAGE_TAG" --project="$PROJECT_ID" --quiet
+
+echo ""
+echo "🚀 2. Publicando revisao no Google Cloud Run..."
 gcloud run deploy "$SERVICE_NAME" \
-  --source . \
+  --image="$IMAGE_TAG" \
   --project="$PROJECT_ID" \
   --region="$REGION" \
   --platform=managed \
@@ -66,6 +72,7 @@ echo ""
 echo "🔐 Autorizando domínios no Firebase Authentication (eliminando auth/unauthorized-domain)..."
 python3 ./authorize_firebase_domain.py "$SERVICE_URL" "$PROJECT_ID" || true
 python3 ./authorize_firebase_domain.py "$CUSTOM_DOMAIN" "$PROJECT_ID" || true
+python3 ./authorize_firebase_domain.py "auth.semantico.com.br" "$PROJECT_ID" || true
 
 echo ""
 echo "=============================================================================="
