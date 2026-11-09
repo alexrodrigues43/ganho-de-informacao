@@ -1,13 +1,47 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'gemini-2.5-flash';
+
+// Configuração segura do Helmet:
+// Desabilita COOP e CORP para permitir comunicação com o popup do Google Sign-In e avatares externos
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+  })
+);
+
+// Rate Limiting para proteção contra abuso de requisições e esgotamento de quota
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Limite de requisições excedido. Tente novamente em alguns minutos.' },
+});
+
+const engineLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Limite de processamento de IA por minuto atingido. Aguarde alguns instantes.' },
+});
+
+app.use('/api/', generalLimiter);
+app.use('/api/engine', engineLimiter);
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -91,7 +125,7 @@ Retorne um JSON estrito no seguinte formato:
 }`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: DEFAULT_MODEL,
           contents: prompt,
           config: {
             systemInstruction: SYSTEM_PROMPT,
@@ -166,7 +200,7 @@ Calcule as métricas consolidadas:
 Retorne estritamente um JSON válido conforme o schema.`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: DEFAULT_MODEL,
           contents: prompt,
           config: {
             systemInstruction: SYSTEM_PROMPT,
@@ -198,7 +232,13 @@ Retorne estritamente um JSON válido conforme o schema.`;
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', engine: 'FTS-v4', patent: 'US 11,354,342 B2' });
+  res.json({
+    status: 'ok',
+    engine: 'FTS-v4',
+    patent: 'US 11,354,342 B2',
+    model: DEFAULT_MODEL,
+    aiAvailable: !!getGenAI(),
+  });
 });
 
 async function startServer() {

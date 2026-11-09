@@ -1,0 +1,12 @@
+.env
+.env.*
+*.env
+env.yaml
+node_modules/
+dist/
+coverage/
+.git/
+.gitignore
+.vscode/
+scratch/
+*.log
